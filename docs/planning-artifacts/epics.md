@@ -169,7 +169,7 @@ So that 이후 모든 파이프라인 단계가 stale한 부분 재실행과 반
 **Then** `<output>.meta.json`(입력 파일 SHA-256·`config_hash`·코드 커밋·생성 시각·행수)을 쓰는 단일 경로가 제공된다(AD-13)
 **And** 산출물 쓰기는 임시 파일 → 원자적 rename 경로만 제공하며, 실패 시 부분 산출물을 남기지 않는다(AD-13)
 **And** 입력 meta 검증 함수가 (a) 입력이 자기 선행 단계 산출물인지 (b) 입력 `config_hash`가 현재 `crm/config.py` 해시와 일치하는지 확인하고 불일치 시 실패시킨다
-**And** 유틸은 stateless 순수 함수이며 파일 쓰기는 호출부(`pipelines/`)에서 일어난다(AD-1·AD-9)
+**And** 유틸은 stateless 순수 함수이며, 쓰기 *메커니즘*은 `crm/common/atomic.py`가 단독 소유하고 *경로·정책*은 호출부(`pipelines/`)가 정한다(AD-1·AD-9, 2026-07-20 컨벤션 개정)
 
 **Given** 신선도 규약을 검증해야 할 때
 **When** pytest를 실행하면

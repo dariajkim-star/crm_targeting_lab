@@ -4,7 +4,7 @@ baseline_commit: a4d304c96ffddf88557ef7a7516c7240875163e1
 
 # Story 1.1b: 신선도·원자적 쓰기 규약과 데이터 확보
 
-Status: review
+Status: done
 
 ## Story
 
@@ -20,7 +20,7 @@ so that 이후 모든 파이프라인 단계가 stale한 부분 재실행과 반
 **Then** `<output>.meta.json`(입력 파일 SHA-256·`config_hash`·코드 커밋·생성 시각·행수)을 쓰는 단일 경로가 제공된다(AD-13)
 **And** 산출물 쓰기는 임시 파일 → 원자적 rename 경로만 제공하며, 실패 시 부분 산출물을 남기지 않는다(AD-13)
 **And** 입력 meta 검증 함수가 (a) 입력이 자기 선행 단계 산출물인지 (b) 입력 `config_hash`가 현재 `crm/config.py` 해시와 일치하는지 확인하고 불일치 시 실패시킨다
-**And** 유틸은 stateless 순수 함수이며 파일 쓰기는 호출부(`pipelines/`)에서 일어난다(AD-1·AD-9)
+**And** 유틸은 stateless 순수 함수이며, 쓰기 *메커니즘*은 `crm/common/atomic.py`가 단독 소유하고 *경로·정책*은 호출부(`pipelines/`)가 정한다(AD-1·AD-9, 2026-07-20 컨벤션 개정)
 
 **AC2 — 신선도 규약 검증**
 **Given** 신선도 규약을 검증해야 할 때
@@ -80,6 +80,54 @@ so that 이후 모든 파이프라인 단계가 stale한 부분 재실행과 반
 - [x] **T9. 실행·커밋**
   - [x] 실데이터 다운로드 **실제 실행**(conventions 3항 — 합성 mock 초록으로 done 금지), 행수를 완료 노트에 기록
   - [x] `pytest` 전체 green, 스토리 단위 커밋
+
+### Review Findings
+
+3-레이어 병렬 리뷰(2026-07-20): Blind 11건 / Edge 15건 / Auditor 7건 → 병합 후 **decision 2 / patch 15 / defer 4 / dismiss 3**. 교차 검증(2개 이상 레이어 일치) 5건. Auditor 실측 재확인: 61 passed, 실아티팩트 크기·meta 5필드·커버리지 행 전환·D1 해소 전부 사실. AC 판정 AC1 조건부 / AC2·AC3 PASS / AC4 PASS(caveat).
+
+- [x] [Review][Decision→Patch] **DQ1. 파일 쓰기 계층 — 스토리 T5 설계 vs 스파인 컨벤션 충돌** [crm/common/acquisition.py] (auditor, F1). 스파인 Consistency Conventions와 AC1 마지막 절은 "파일 쓰기는 **오직 `pipelines/` 계층에서만**"이라고 못 박는데 `store_csv_as_parquet`가 `write_with_meta`를 직접 호출한다. **원인은 dev 일탈이 아니라 스토리 T5가 그 구조를 지시한 것.** → **사용자 결정: 옵션1 — 컨벤션을 현실에 맞게 개정**(P1 2-2 선례). 쓰기의 *메커니즘*은 `crm.common.atomic`이 단일 소유하고, *무엇을 어디에 쓸지 정하는 정책*은 `pipelines/`가 소유하는 것으로 스파인·AC1 문구를 소급 개정. 40행 제약과도 양립.
+- [x] [Review][Decision→Defer] **DQ2. `verify_inputs`가 기록된 입력 해시를 대조하지 않음 — AD-13 대표 시나리오 미차단** [crm/common/freshness.py] (blind, **High**). `build_meta`는 `inputs:{name:sha256}`를 기록하지만 `verify_inputs`는 존재·파싱·stage·config_hash만 본다. AD-13이 명시한 시나리오(A가 02를 고쳐 02·05 재실행, B는 05만 재실행)에서 `crm/config.py`가 안 바뀌었으면 그대로 통과한다. → **사용자 결정: 옵션2 — 1-3으로 이월**. 지금 구현하면 검증 대상이 0건(1-1a "무의미한 초록" 함정의 재판)이고, 02가 01 산출물을 실제로 소비하는 시점에 `is_output_stale(output, inputs)`를 만들어야 실증이 가능하다. **현 한계를 `freshness.py` docstring에 정직하게 명시**(P16과 함께 처리).
+- [x] [Review][Patch] P1. `write_with_meta`의 parking `os.replace`가 `try` **밖**에 있어, parking 직후~try 진입 전 예외 시 롤백 코드가 도달 불가(이전 산출물이 `.tmp`로 방치·target 소실) [crm/common/atomic.py] (edge, High)
+- [x] [Review][Patch] P2. 롤백의 `os.replace(previous, target)` 자체 실패 미처리 — 원래 예외가 롤백 예외에 가려지고 previous가 영구 고아, target엔 meta 없는 새 내용(=이 모듈이 막겠다던 orphan) [crm/common/atomic.py] (blind+edge, High)
+- [x] [Review][Patch] P3. meta가 유효 JSON이지만 dict가 아니면(리스트·문자열) `meta.get`에서 `AttributeError` — `StaleInputError` 아닌 무관한 크래시 [crm/common/freshness.py] (edge, High)
+- [x] [Review][Patch] P4. `_atomic_write`의 `finally: tmp.unlink()`가 재예외(Windows 핸들 잠금) 시 원인 예외를 마스킹 [crm/common/atomic.py] (edge)
+- [x] [Review][Patch] P5. `build_meta`의 `inputs` 키가 `path.name` — 다른 디렉터리의 동명 파일 2개면 dict 키 충돌로 한 해시가 조용히 유실 [crm/common/freshness.py] (edge)
+- [x] [Review][Patch] P6. main 시그니처 체커 4중 사각지대: 중첩 `def main` 재정의가 `main_def`를 덮어써 거짓 양성/음성, `async def main` 통과, `posonlyargs`(`/`) 거짓 양성, `*args/**kwargs/kwonly/기본값` 거짓 음성, `lambda` 미검출 [tests/structure/checkers.py] (blind+edge)
+- [x] [Review][Patch] P7. `test_code_commit_never_raises`가 이중 무의미 — `monkeypatch.chdir`은 `cwd=__file__.parent` 고정이라 무효과이고, 단언은 타입상 항상 참인 동어반복 [tests/common/test_freshness.py] (blind)
+- [x] [Review][Patch] P8. CSV 0행(빈 파일·헤더만)이 정상 산출물로 통과 — 하류에서 원인과 먼 실패 [crm/common/acquisition.py] (edge)
+- [x] [Review][Patch] P9. `output_paths` 길이 2 아님 → 맥락 없는 unpack ValueError [pipelines/01_download.py] (edge)
+- [x] [Review][Patch] P10. `logging.basicConfig`가 import 시점 실행 — 이 모듈을 import하는 쪽의 로깅 설정을 덮어씀 [pipelines/01_download.py] (edge)
+- [x] [Review][Patch] P11. `kaggle_csv_path`가 glob 다중 매치 시 `matches[0]` 침묵 선택 — "레이아웃 변경은 시끄럽게 실패" 의도와 배치 [crm/common/acquisition.py] (blind)
+- [x] [Review][Patch] P12. `file_sha256`/`verify_inputs`에 디렉터리 경로 전달 시 `IsADirectoryError` 원인 불명 전파 [crm/common/freshness.py] (edge)
+- [x] [Review][Patch] P13. AC4의 "폴백 안내 출력 + 비영 종료"가 코드에 없음(README에만 존재) — T5 체크 문구가 코드로 뒷받침되지 않음 [pipelines/01_download.py] (auditor, F2)
+- [x] [Review][Patch] P14. 테스트 헬퍼 `_leftovers`가 `startswith(".")`까지 잔여물로 과잉 매칭 [tests/common/test_atomic.py] (blind)
+- [x] [Review][Patch] P15. `store_csv_as_parquet`의 "determinism" 주석 과장 — `low_memory=False`는 청크 의존 dtype만 제거, parquet 바이트 해시는 여전히 환경 의존 [crm/common/acquisition.py] (blind)
+- [x] [Review][Patch] P16. Dev Record 테스트 산술 오기(freshness 12 → 실제 11) [이 파일] (auditor, F3)
+- [x] [Review][Defer] D1. **크래시 안전성**(예외 안전성과 별개) — parking~복원 사이 프로세스 kill/정전 시 마지막 정상 산출물이 임의 `.tmp`에 숨고 자동 복구 경로 없음. 진짜 해결은 시작 시 고아 `.tmp` 스캔·복구 루틴이며 이 스토리 범위 밖 — deferred
+- [x] [Review][Defer] D2. 산출물 자체의 내용 해시가 meta에 없어 parquet 수동 변조를 탐지 못함(AD-13 계약 범위 밖, 위·변조는 non-goal) — deferred
+- [x] [Review][Defer] D3. kagglehub 로컬 캐시 재사용 — 업스트림 갱신 시 재다운로드 안 함. `force_download` 노출 또는 캐시 무효화 절차 문서화 필요 — deferred
+- [x] [Review][Defer] D4. 새 output이 놓인 뒤 meta 쓰기 전까지 (새 output + 옛 meta) 창 존재 — 단일 프로세스 배치 envelope에서 실해악 낮음 — deferred
+
+Dismissed(3): `crm/config`가 `.pyc`/zipimport로 로드되는 경우(로컬 전용 envelope — 1-1a `PROJECT_ROOT` 건과 동일 근거), `STAGE_DOWNLOAD` 기본값이 공유 유틸에 있는 것(stage 지식은 레인 지식이 아님 — AD-1 위반 아님), T5의 명시적 `del` 부재(함수 스코프 종료로 실질 동일).
+
+#### 병행 리뷰 보강 (독립 신규 컨텍스트, 2026-07-20)
+
+> 별도 세션이 같은 커밋을 독립 리뷰했다. 발견 8건이 **전부 위 목록에 이미 포함**됐다(→ P5·P2·P11·P6·P15·DQ1·DQ2·D1). 독립 수렴이 확인됐으므로 중복 항목은 병합하고, **위 목록에 없던 두 가지만** 아래에 남긴다. 그 세션은 P1(parking이 `try` 밖)·P3(비-dict meta)·P13(AC4 코드 부재)을 잡지 못했다 — 3-레이어 병렬 리뷰가 단일 컨텍스트보다 넓다는 실측 근거.
+
+**① 실행 재현 로그** — 위 지적 중 4건을 읽기 추론이 아니라 실제 실행으로 재현했다. patch 시 회귀 테스트의 기대 동작으로 그대로 쓸 수 있다.
+
+| 항목 | 재현 방법 | 관측 결과 |
+|---|---|---|
+| P5 | `a/x.csv`(내용 `1`) + `b/x.csv`(내용 `2222`)를 `build_meta`에 함께 전달 | `len(meta['inputs']) == 1`, keys=`['x.csv']` — 한 해시 조용히 유실 |
+| P2 | writer가 `ValueError("WRITER FAILED")`, 롤백 `os.replace`를 `PermissionError`로 강제 실패 | 호출부 수신 예외 = **PermissionError**(원인 `ValueError` 유실), `target.exists()==False`, 잔여 `.tmp` 1건 |
+| DQ2/D2 | 정상 산출 후 parquet을 `b"TAMPERED-DIFFERENT-LENGTH"`로 덮어씀 | `verify_inputs` **통과**, meta에 `output_sha256` 필드 부재 확인 |
+| D1 | `os.replace` 계측으로 parking 직후 상태 관찰 | `target` 부재 구간 실재 확인(`target_missing=True`) |
+
+**② 외부 사실 독립 검증** — 스토리의 외부 의존 주장을 리뷰어가 직접 확인했다(위 목록에 없던 항목).
+
+- **kagglehub 익명 다운로드**: Kaggle 공식 정책상 2024-04 이후 공개 데이터셋은 인증 불요 — 스토리의 "P1 선례" 주장 **입증**. 단 공식 문서에 *"user consent가 필요한 공개 리소스는 예외"* 단서가 있어, 향후 데이터셋 교체 시 재확인 필요.
+- **두 슬러그 실존·라이선스**: Kaggle 공개 API로 확인 — `sakshigoyal7/credit-card-customers`(387,771B), `mashlyn/online-retail-ii-uci`(15,217,139B, ver.3). **둘 다 CC0: Public Domain** → AD-10(퍼블리시 시 공개 노출) 전제 충족.
+- **⚠️ README 폴백 경로 주의**: UCI 공식 폴백을 문서화할 경우 `https://archive.ics.uci.edu/static/public/502/online+retail+ii.zip`은 **200 OK**지만 `https://www.uci.edu/static/public/502/...`는 **403**이다(후자는 LLM이 흔히 생성하는 오답 — 실측 확인함). 또한 UCI 원본은 **`.xlsx`**라 CSV를 가정한 폴백 코드는 `openpyxl` 없이 실패한다. 현재 README 폴백은 Kaggle 링크 기반이라 무해하나, UCI 경로로 바꾼다면 이 두 가지가 함정이다.
 
 ## Dev Notes
 
@@ -170,7 +218,7 @@ claude-opus-4-8
 
 ### Debug Log References
 
-- `pytest` 최종: **61 passed** (1-1a 기준선 38 + freshness 12 + atomic 11 + 시그니처 픽스처 2 — 회귀 0). 참고: 61 = 38+25인 이유는 T6 픽스처 중 2건이 기존 파일 수정으로 흡수됨.
+- `pytest`: 구현 시점 **61 passed**(1-1a 기준선 38 + freshness 11 + atomic 10 + 시그니처 픽스처 2). 코드리뷰 패치 후 **73 passed**(회귀 0).
 - 설치 실측: **pyarrow 25.0.0, kagglehub 1.0.2** (T1)
 - 실데이터 실행(T9): `bankchurners.parquet` **10,127행**×23컬럼(이탈 1,627 ≈ 16.1% — stack.md 명세 일치), `online_retail.parquet` **1,067,371행**×8컬럼(GBP `Price`·`Customer ID` 확인). meta 2건에 `config_hash`(9cad836d…)·`code_commit`(a4d304c) 기록, 실아티팩트로 `verify_inputs` end-to-end PASS.
 
@@ -198,4 +246,5 @@ claude-opus-4-8
 
 | 날짜 | 변경 |
 |---|---|
-| 2026-07-20 | 스토리 1-1b 구현: AD-13 신선도(`freshness.py`)·원자적 쓰기(`atomic.py`)·데이터 확보(`acquisition.py`+`01_download.py` 36행). 실데이터 10,127+1,067,371행 확보·검증. deferred D1 해소(main 시그니처 가드). 61 passed. |
+| 2026-07-20 | 스토리 1-1b 구현: AD-13 신선도(`freshness.py`)·원자적 쓰기(`atomic.py`)·데이터 확보(`acquisition.py`+`01_download.py`). 실데이터 10,127+1,067,371행 확보·검증. deferred D1 해소(main 시그니처 가드). 61 passed. |
+| 2026-07-20 | 3-레이어 코드리뷰 반영: decision 2 해소(DQ1 컨벤션 소급 개정 / DQ2 1-3 이월) + patch 16건 전량 적용 + defer 4건. 원자성 강화(parking을 try 내부로, 롤백 실패 시 원인 예외 보존+parking 경로 안내), 체커 5중 사각지대 봉쇄(중첩 main·async·posonly·varargs·lambda), 0행 CSV 거부, 폴백 안내+비영 종료. **73 passed**, 실데이터 재실행 동일 결과. |

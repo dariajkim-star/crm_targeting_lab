@@ -284,6 +284,63 @@ def test_pipeline_checker_flags_wrong_main_signature(tmp_path: Path) -> None:
     assert any("07_wrong.py" in v and "input_paths" in v for v in violations)
 
 
+def test_pipeline_checker_flags_nested_main_redefinition(tmp_path: Path) -> None:
+    """Naming a nested helper `main` satisfied only-main AND hijacked the
+    signature check - one identifier defeating two rules at once."""
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "pipelines/08_nested.py",
+        "def main(input_paths, output_paths):\n    def main(x):\n        return x\n    return main(1)\n",
+    )
+
+    violations, _ = checkers.find_pipeline_shape_violations(root)
+
+    assert any("08_nested.py" in v and "nested" in v for v in violations)
+
+
+def test_pipeline_checker_flags_async_main(tmp_path: Path) -> None:
+    root = _clean_tree(tmp_path)
+    _write(root, "pipelines/09_async.py", "async def main(input_paths, output_paths):\n    return None\n")
+
+    violations, _ = checkers.find_pipeline_shape_violations(root)
+
+    assert any("09_async.py" in v and "async" in v for v in violations)
+
+
+def test_pipeline_checker_flags_extra_main_parameters(tmp_path: Path) -> None:
+    """*args/**kwargs/kw-only/defaults change the call contract - all rejected."""
+    root = _clean_tree(tmp_path)
+    _write(root, "pipelines/10_extra.py", "def main(input_paths, output_paths, *, debug=True):\n    return None\n")
+
+    violations, _ = checkers.find_pipeline_shape_violations(root)
+
+    assert any("10_extra.py" in v and "input_paths" in v for v in violations)
+
+
+def test_pipeline_checker_accepts_positional_only_main(tmp_path: Path) -> None:
+    """`/` keeps the positional call contract identical - not a violation."""
+    root = _clean_tree(tmp_path)
+    _write(root, "pipelines/11_posonly.py", "def main(input_paths, output_paths, /):\n    return None\n")
+
+    violations, _ = checkers.find_pipeline_shape_violations(root)
+
+    assert not any("11_posonly.py" in v for v in violations)
+
+
+def test_pipeline_checker_flags_lambda(tmp_path: Path) -> None:
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "pipelines/12_lambda.py",
+        "SORT = lambda x: x\n\n\ndef main(input_paths, output_paths):\n    return SORT(1)\n",
+    )
+
+    violations, _ = checkers.find_pipeline_shape_violations(root)
+
+    assert any("12_lambda.py" in v and "lambda" in v for v in violations)
+
+
 def test_pipeline_checker_passes_conforming_stage(tmp_path: Path) -> None:
     root = _clean_tree(tmp_path)
 

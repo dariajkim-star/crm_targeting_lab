@@ -62,13 +62,40 @@ def test_config_hash_tracks_the_config_file_bytes() -> None:
     assert freshness.config_hash() == freshness.sha256_bytes(source)
 
 
-def test_code_commit_never_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Outside a git repo it returns None; freshness never depends on git."""
-    monkeypatch.chdir(tmp_path)
+def test_code_commit_returns_none_when_git_is_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """git missing must degrade to None, never raise - meta is best-effort context.
 
-    result = freshness.code_commit()
+    Simulated by making subprocess.run raise OSError (what happens when the git
+    executable is absent). An earlier version of this test used chdir, which was
+    inert because code_commit() pins cwd to its own directory.
+    """
+    def no_git(*args: object, **kwargs: object) -> None:
+        raise OSError("git not found")
 
-    assert result is None or isinstance(result, str)
+    monkeypatch.setattr(freshness.subprocess, "run", no_git)
+
+    assert freshness.code_commit() is None
+
+
+def test_code_commit_returns_none_on_nonzero_exit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Outside a repository git exits non-zero; that is None, not a crash."""
+    class Failed:
+        returncode = 128
+        stdout = ""
+
+    monkeypatch.setattr(freshness.subprocess, "run", lambda *a, **k: Failed())
+
+    assert freshness.code_commit() is None
+
+
+def test_code_commit_returns_the_sha_when_git_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Succeeded:
+        returncode = 0
+        stdout = "deadbeef1234\n"
+
+    monkeypatch.setattr(freshness.subprocess, "run", lambda *a, **k: Succeeded())
+
+    assert freshness.code_commit() == "deadbeef1234"
 
 
 # --- meta construction -------------------------------------------------------
@@ -134,6 +161,33 @@ def test_verify_inputs_fails_on_unreadable_meta_json(tmp_path: Path) -> None:
 
     with pytest.raises(freshness.StaleInputError):
         freshness.verify_inputs([out], expected_stage="01_download")
+
+
+def test_verify_inputs_fails_when_meta_is_json_but_not_an_object(tmp_path: Path) -> None:
+    """Valid JSON that is a list/string must be a StaleInputError, not AttributeError."""
+    out = tmp_path / "bankchurners.parquet"
+    out.write_text("payload", encoding="utf-8")
+    out.with_suffix(out.suffix + ".meta.json").write_text('["not", "an", "object"]', encoding="utf-8")
+
+    with pytest.raises(freshness.StaleInputError, match="malformed"):
+        freshness.verify_inputs([out], expected_stage="01_download")
+
+
+def test_build_meta_rejects_colliding_input_filenames(tmp_path: Path) -> None:
+    """Same filename from two directories would silently drop one hash."""
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    first, second = tmp_path / "a" / "raw.csv", tmp_path / "b" / "raw.csv"
+    first.write_bytes(b"one")
+    second.write_bytes(b"two")
+
+    with pytest.raises(ValueError, match="duplicate input filenames"):
+        freshness.build_meta(stage="02_features", inputs=[first, second], rows=1)
+
+
+def test_file_sha256_rejects_a_directory(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="not a file"):
+        freshness.file_sha256(tmp_path)
 
 
 def test_verify_inputs_reports_the_offending_path(tmp_path: Path) -> None:

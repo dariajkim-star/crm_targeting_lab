@@ -21,8 +21,12 @@ from crm.common import atomic, freshness
 
 
 def _leftovers(directory: Path) -> list[str]:
-    """Any temp residue the writer failed to clean up."""
-    return [p.name for p in directory.iterdir() if ".tmp" in p.name or p.name.startswith(".")]
+    """Temp residue the writer failed to clean up.
+
+    Matches only the module's own pattern (``.<name>.<hex>.tmp``); a broader
+    "starts with a dot" rule would fail on unrelated dotfiles.
+    """
+    return [p.name for p in directory.iterdir() if p.name.startswith(".") and p.name.endswith(".tmp")]
 
 
 # --- primitives --------------------------------------------------------------

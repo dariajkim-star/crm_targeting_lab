@@ -257,28 +257,51 @@ def find_pipeline_shape_violations(root: Path) -> tuple[list[str], int]:
         except SyntaxError:
             violations.append(f"AD-9 pipeline shape: {path.name} does not parse")
             continue
-        # Walk the WHOLE tree: a def/class nested inside main() is the same
-        # rule dodged one indent deeper.
-        main_def: ast.FunctionDef | ast.AsyncFunctionDef | None = None
+        # Walk the WHOLE tree: a def/class/lambda nested inside main() is the
+        # same rule dodged one indent deeper.
+        top_level = {id(node) for node in tree.body}
+        main_defs: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
         for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name != _PIPELINE_ALLOWED_DEF:
-                violations.append(f"AD-9 pipeline shape: {path.name} defines '{node.name}' (only main() allowed)")
-            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                main_def = node
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if node.name != _PIPELINE_ALLOWED_DEF:
+                    violations.append(
+                        f"AD-9 pipeline shape: {path.name} defines '{node.name}' (only main() allowed)"
+                    )
+                elif id(node) not in top_level:
+                    # Naming a nested helper `main` used to satisfy the
+                    # only-main rule AND hijack the signature check.
+                    violations.append(
+                        f"AD-9 pipeline shape: {path.name} defines a nested 'main' "
+                        f"(only the module-level main() is allowed)"
+                    )
+                else:
+                    main_defs.append(node)
             elif isinstance(node, ast.ClassDef):
                 violations.append(f"AD-9 pipeline shape: {path.name} defines class '{node.name}'")
+            elif isinstance(node, ast.Lambda):
+                violations.append(f"AD-9 pipeline shape: {path.name} defines a lambda (only main() allowed)")
 
         # AD-8: a stage IS its main(input_paths, output_paths) - exactly that
         # signature, so every stage is invocable the same way.
-        if main_def is None:
+        if not main_defs:
             violations.append(f"AD-8 pipeline shape: {path.name} has no main() - a stage IS its main()")
-        else:
-            arg_names = [a.arg for a in main_def.args.args]
-            if arg_names != ["input_paths", "output_paths"]:
-                violations.append(
-                    f"AD-8 pipeline shape: {path.name} main({', '.join(arg_names)}) - "
-                    f"required signature is main(input_paths, output_paths)"
-                )
+            continue
+
+        main_def = main_defs[0]
+        if isinstance(main_def, ast.AsyncFunctionDef):
+            violations.append(f"AD-8 pipeline shape: {path.name} main() is async - stages are called synchronously")
+
+        args = main_def.args
+        # positional-only is fine (same positional call), but extras are not:
+        # *args/**kwargs/keyword-only/defaults all change the call contract.
+        arg_names = [a.arg for a in args.posonlyargs] + [a.arg for a in args.args]
+        extras = args.vararg or args.kwarg or args.kwonlyargs or args.defaults or args.kw_defaults
+        if arg_names != ["input_paths", "output_paths"] or extras:
+            violations.append(
+                f"AD-8 pipeline shape: {path.name} main({', '.join(arg_names)}"
+                f"{', ...' if extras else ''}) - required signature is "
+                f"main(input_paths, output_paths)"
+            )
 
     return violations, len(files)
 

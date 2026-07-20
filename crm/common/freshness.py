@@ -15,9 +15,21 @@ Definitions fixed here (do not reinterpret in later stories):
 - A stage is identified by its ``stage`` string (e.g. ``"01_download"``), not by
   filename conventions - filenames change, the contract should not.
 
+KNOWN LIMITATION (story 1-1b review, scheduled for 1-3):
+``build_meta`` records each input's SHA-256, but ``verify_inputs`` does NOT yet
+compare those recorded hashes against the inputs as they stand now. So the
+canonical AD-13 scenario - someone edits stage 02's CODE and reruns 02 and 05
+while a colleague reruns only 05 - passes today whenever ``crm/config.py`` is
+unchanged. Closing it needs the CONSUMING stage to compare its own previous
+output meta against the current inputs (``is_output_stale(output, inputs)``),
+which only becomes testable once a stage actually consumes another's output
+(story 1-3). Until then this module catches config drift and wrong-producer
+inputs, not code-driven staleness.
+
 All functions are stateless and pure apart from reading the files they are
-given (AD-1). Writing meta to disk is the pipeline layer's job via
-``crm.common.atomic.write_with_meta`` (AD-9).
+given (AD-1). Writing to disk goes through ``crm.common.atomic`` - that module
+owns the write MECHANISM, while the pipeline layer owns the policy of what is
+written where (AD-9, convention amended in story 1-1b review).
 """
 
 from __future__ import annotations
@@ -42,6 +54,10 @@ def sha256_bytes(data: bytes) -> str:
 
 def file_sha256(path: Path) -> str:
     """Content hash of a file, streamed so large parquet files are fine."""
+    if not path.is_file():
+        # Without this a directory argument surfaces as IsADirectoryError /
+        # PermissionError far from the caller that passed the wrong path.
+        raise ValueError(f"not a file: {path}")
     digest = hashlib.sha256()
     with open(path, "rb") as handle:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
@@ -83,14 +99,27 @@ def build_meta(stage: str, inputs: Iterable[Path], rows: int) -> dict:
 
     ``inputs`` are the files the stage READ (hashed by name); an acquisition
     stage that reads only the network passes an empty list.
+
+    Filenames must be unique: two inputs sharing a name from different
+    directories would collide in the dict and one hash would vanish silently,
+    leaving provenance incomplete in exactly the record meant to prove it.
     """
+    input_list = list(inputs)
+    names = [path.name for path in input_list]
+    duplicates = {name for name in names if names.count(name) > 1}
+    if duplicates:
+        raise ValueError(
+            f"duplicate input filenames would collide in meta: {sorted(duplicates)} - "
+            f"rename them or pass distinguishable paths"
+        )
+
     return {
         "stage": stage,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "config_hash": config_hash(),
         "code_commit": code_commit(),
         "rows": rows,
-        "inputs": {path.name: file_sha256(path) for path in inputs},
+        "inputs": {path.name: file_sha256(path) for path in input_list},
     }
 
 
@@ -118,6 +147,12 @@ def verify_inputs(input_paths: Iterable[Path], expected_stage: str) -> None:
             meta = json.loads(meta_file.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError) as err:
             raise StaleInputError(f"unreadable meta for input: {path} ({err})") from err
+
+        if not isinstance(meta, dict):
+            # Valid JSON but not an object (a list, a bare string): without this
+            # the .get() calls below raise AttributeError, which tells whoever
+            # is debugging nothing about the actual problem.
+            raise StaleInputError(f"malformed meta for input: {path} - expected a JSON object")
 
         if meta.get("stage") != expected_stage:
             raise StaleInputError(

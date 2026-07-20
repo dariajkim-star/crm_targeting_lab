@@ -39,7 +39,13 @@ def _atomic_write(target: Path, write: Callable[[Path], None]) -> None:
         write(tmp)
         os.replace(tmp, target)
     finally:
-        tmp.unlink(missing_ok=True)
+        # Cleanup must never mask the real failure: on Windows an unreleased
+        # handle (or a scanner) can make unlink raise, and that exception would
+        # replace the one explaining what actually went wrong.
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def atomic_write_bytes(target: Path, data: bytes) -> None:
@@ -63,25 +69,40 @@ def write_with_meta(target: Path, writer: Callable[[Path], None], meta: dict[str
     artifact survives.
     """
     previous: Path | None = None
-    if target.exists():
-        # Park the previous good artifact so a failed rerun can restore it.
-        previous = _tmp_beside(target)
-        os.replace(target, previous)
-
     try:
+        if target.exists():
+            # Park the previous good artifact so a failed rerun can restore it.
+            # Parking lives INSIDE the try: if it succeeded and then anything
+            # raised (KeyboardInterrupt included) before the try began, the
+            # rollback below would be unreachable and the artifact stranded.
+            previous = _tmp_beside(target)
+            os.replace(target, previous)
+
         _atomic_write(target, writer)
         atomic_write_text(meta_path_for(target), json.dumps(meta, indent=2))
-    except BaseException:
+    except BaseException as err:
         # Roll back. The meta write is atomic and is the LAST step, so on any
         # exception a meta file on disk can only be the PREVIOUS run's - keep it
         # when restoring the previous output (deleting it would manufacture the
         # exact orphan this module exists to prevent).
         if previous is not None:
-            os.replace(previous, target)
+            try:
+                os.replace(previous, target)
+            except OSError as rollback_err:
+                # Never let the rollback failure hide the original cause, and
+                # never leave the previous artifact hidden under a uuid name
+                # with no way to find it.
+                raise RuntimeError(
+                    f"rollback failed for {target}: the previous artifact is parked at "
+                    f"{previous} and must be restored by hand ({rollback_err})"
+                ) from err
         else:
             target.unlink(missing_ok=True)
             meta_path_for(target).unlink(missing_ok=True)
         raise
     else:
         if previous is not None:
-            previous.unlink(missing_ok=True)
+            try:
+                previous.unlink(missing_ok=True)
+            except OSError:
+                pass
