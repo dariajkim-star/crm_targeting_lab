@@ -47,7 +47,41 @@ _CONFIG_WHITELIST = frozenset(
         "docs/implementation-artifacts/sprint-status.yaml",  # BMAD story tracking
     }
 )
-_SKIP_DIRS = frozenset({".git", ".venv", "__pycache__", ".pytest_cache", "node_modules"})
+# Data-artifact trees are OUT OF SCOPE for AD-4, by directory rather than by
+# filename. AD-4 constrains where configuration lives, not which file
+# extensions may exist: story 1-1b writes `data/meta.json` (freshness metadata)
+# and epic 4 writes mart JSON. Scanning those by suffix would report a data
+# artifact as "unexpected config file" - a guard firing on the wrong thing is
+# worse than no guard, because the message misleads whoever debugs it.
+# Directory-level exclusion (not a per-file whitelist) is deliberate: these
+# trees are machine-written and their filenames are not knowable in advance.
+_DATA_DIRS = frozenset({"data", "marts", "models"})
+# Tooling trees: never application code or config. `.claude` / `.playwright-mcp`
+# / editor dirs can appear at any time without a commit, so excluding them keeps
+# the AD-4 scan from flagging tool-generated JSON as a second config file.
+_SKIP_DIRS = frozenset(
+    {
+        ".git",
+        ".venv",
+        "__pycache__",
+        ".pytest_cache",
+        "node_modules",
+        ".claude",
+        ".playwright-mcp",
+        ".vscode",
+        ".idea",
+    }
+)
+
+
+def _is_skipped(root: Path, path: Path) -> bool:
+    """Skip-dir check against ROOT-RELATIVE parts only.
+
+    Matching on absolute ``path.parts`` would let the repository's location
+    poison every rule - a checkout under ``C:/tools/node_modules/repo`` would
+    scan zero files and pass silently.
+    """
+    return bool(set(path.relative_to(root).parts) & _SKIP_DIRS)
 
 
 def _iter_python_files(root: Path, subdir: str) -> list[Path]:
@@ -55,7 +89,7 @@ def _iter_python_files(root: Path, subdir: str) -> list[Path]:
     base = root / subdir
     if not base.exists():
         return []
-    return sorted(p for p in base.rglob("*.py") if not (set(p.parts) & _SKIP_DIRS))
+    return sorted(p for p in base.rglob("*.py") if not _is_skipped(root, p))
 
 
 def _module_name(root: Path, path: Path) -> str:
@@ -102,6 +136,11 @@ def _imported_modules(root: Path, path: Path) -> list[str]:
         elif isinstance(node, ast.ImportFrom):
             if node.level:
                 # level 1 = containing package, 2 = its parent, ...
+                if node.level - 1 > len(package):
+                    # Deeper than the tree itself: a runtime ImportError, not a
+                    # resolvable module. Skip rather than slice with a negative
+                    # index and fabricate a wrong base package.
+                    continue
                 base = package[: len(package) - (node.level - 1)] if node.level > 1 else package
                 target = ".".join((*base, node.module)) if node.module else ".".join(base)
             else:
@@ -165,6 +204,11 @@ def find_campaign_order_violations(root: Path) -> tuple[list[str], int]:
     for path in files:
         own_rank = _CAMPAIGN_ORDER.index(path.stem)
         for imported in _imported_modules(root, path):
+            # Only names inside crm.campaign are stages. Without this prefix
+            # check `import scipy.sensitivity` would be flagged as an order
+            # violation purely because its tail collides with a stage name.
+            if not _matches(imported, "crm.campaign"):
+                continue
             tail = imported.rsplit(".", 1)[-1]
             if tail in _CAMPAIGN_ORDER and _CAMPAIGN_ORDER.index(tail) > own_rank:
                 violations.append(f"AD-9 campaign order: {path.stem} imports later stage {tail}")
@@ -172,14 +216,37 @@ def find_campaign_order_violations(root: Path) -> tuple[list[str], int]:
     return violations, len(files)
 
 
+def _stage_name_pattern_ok(name: str) -> bool:
+    """True for the canonical stage filename shape ``NN_<verb>.py``."""
+    return len(name) > 3 and name[:2].isdigit() and name[2] == "_" and name.endswith(".py")
+
+
 def find_pipeline_shape_violations(root: Path) -> tuple[list[str], int]:
-    """AD-8/AD-9: stages are thin - <=40 lines and no def/class besides main()."""
+    """AD-8/AD-9: stages are thin - <=40 lines and no def/class besides main().
+
+    EVERY ``.py`` under ``pipelines/`` (recursively) is in scope. A file that
+    dodges the ``NN_<verb>.py`` naming or hides in a subdirectory is itself a
+    violation - otherwise renaming a stage would silently exempt it from the
+    40-line and main-only rules, and it would not even appear in the scanned
+    count that the coverage report relies on.
+    """
     violations: list[str] = []
     base = root / "pipelines"
-    files = sorted(base.glob("[0-9][0-9]_*.py")) if base.exists() else []
+    files = sorted(p for p in base.rglob("*.py") if not _is_skipped(root, p)) if base.exists() else []
 
     for path in files:
-        text = path.read_text(encoding="utf-8")
+        if path.parent != base or not _stage_name_pattern_ok(path.name):
+            rel = path.relative_to(base).as_posix()
+            violations.append(
+                f"AD-9 pipeline shape: '{rel}' does not match the NN_<verb>.py stage naming "
+                f"at pipelines/ top level - shape rules cannot be dodged by renaming"
+            )
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            violations.append(f"AD-9 pipeline shape: {path.name} is not valid UTF-8")
+            continue
         line_count = len(text.splitlines())
         if line_count > _PIPELINE_MAX_LINES:
             violations.append(
@@ -190,7 +257,9 @@ def find_pipeline_shape_violations(root: Path) -> tuple[list[str], int]:
         except SyntaxError:
             violations.append(f"AD-9 pipeline shape: {path.name} does not parse")
             continue
-        for node in tree.body:
+        # Walk the WHOLE tree: a def/class nested inside main() is the same
+        # rule dodged one indent deeper.
+        for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name != _PIPELINE_ALLOWED_DEF:
                 violations.append(f"AD-9 pipeline shape: {path.name} defines '{node.name}' (only main() allowed)")
             elif isinstance(node, ast.ClassDef):
@@ -216,6 +285,9 @@ def find_stateful_common_violations(root: Path) -> tuple[list[str], int]:
             tree = ast.parse(path.read_text(encoding="utf-8"))
         except SyntaxError:
             continue
+        except UnicodeDecodeError:
+            violations.append(f"AD-1 stateless common: {path.name} is not valid UTF-8")
+            continue
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
                 continue
@@ -229,15 +301,26 @@ def find_stateful_common_violations(root: Path) -> tuple[list[str], int]:
 
 
 def find_extra_config_files(root: Path) -> tuple[list[str], int]:
-    """AD-4: crm/config.py is the only application configuration file."""
+    """AD-4: crm/config.py is the only application configuration file.
+
+    Data-artifact trees (see ``_DATA_DIRS``) are excluded: a ``.json`` written by
+    a pipeline is an output, not configuration, and flagging it would make the
+    guard fire on the wrong thing.
+    """
     violations: list[str] = []
     scanned = 0
 
     for path in root.rglob("*"):
-        if not path.is_file() or set(path.parts) & _SKIP_DIRS:
+        if not path.is_file() or _is_skipped(root, path):
+            continue
+        relative_parts = path.relative_to(root).parts
+        if relative_parts and relative_parts[0] in _DATA_DIRS:
             continue
         relative = path.relative_to(root).as_posix()
-        is_config = path.suffix.lower() in _CONFIG_SUFFIXES or path.name == ".env"
+        # `.env` matching is by lowercase PREFIX: dotenv tooling loads
+        # `.env.local` / `.env.production` just as eagerly as `.env`, and NTFS
+        # treats `.ENV` as the same file.
+        is_config = path.suffix.lower() in _CONFIG_SUFFIXES or path.name.lower().startswith(".env")
         if not is_config:
             continue
         scanned += 1

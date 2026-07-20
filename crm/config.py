@@ -13,13 +13,14 @@ Two hard rules govern what may live here:
    one dataset lane and parked here would silently leak into the other lane.
    Every constant therefore carries a `# source:` comment stating its origin.
 
-ASCII-only by convention (P1 lesson: non-ASCII source on a Windows cp949
-console caused encoding failures). Korean prose belongs in docs/, not here.
+Encoding note (P1 lesson: cp949 console mishaps on Windows): everything the
+RUNTIME parses - names, values, messages - stays ASCII. Provenance comments
+(`# source: ...`) use the Korean tags the story AC mandates; the file is UTF-8
+and every tool in this repo reads it with an explicit encoding.
 """
 
 from __future__ import annotations
 
-import random
 from pathlib import Path
 
 # --- Reproducibility (AD-7) --------------------------------------------------
@@ -67,26 +68,20 @@ def ensure_output_dirs() -> None:
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def set_global_seed(seed: int = RANDOM_SEED) -> int:
-    """Seed Python's ``random`` so incidental randomness is reproducible.
-
-    This is a floor, not a substitute: AD-7 still requires every library call to
-    receive its seed explicitly. Returns the seed so callers can log it.
-    """
-    random.seed(seed)
-    return seed
-
-
 # --- Representative-value guards (AD-4) --------------------------------------
 # Run at import time so a violation cannot reach runtime. Without these, the
 # simulator (3-2) could report a headline number that does not sit anywhere on
 # the sensitivity curve (3-4) - P1 shipped exactly that class of defect when a
 # cutoff value drifted between two call sites.
-assert RETENTION_SUCCESS_RATE in RETENTION_GRID, (
-    "AD-4: RETENTION_SUCCESS_RATE must be a point on RETENTION_GRID so the "
-    "simulator's headline result lies on the sensitivity curve."
-)
-assert COST_PER_CONTACT in COST_GRID, (
-    "AD-4: COST_PER_CONTACT must be a point on COST_GRID so the simulator's "
-    "headline result lies on the sensitivity curve."
-)
+# Explicit `raise` rather than `assert`: `python -O` strips asserts, and a
+# guard that disappears under an interpreter flag is not a guard.
+if RETENTION_SUCCESS_RATE not in RETENTION_GRID:
+    raise ValueError(
+        "AD-4: RETENTION_SUCCESS_RATE must be a point on RETENTION_GRID so the "
+        "simulator's headline result lies on the sensitivity curve."
+    )
+if COST_PER_CONTACT not in COST_GRID:
+    raise ValueError(
+        "AD-4: COST_PER_CONTACT must be a point on COST_GRID so the simulator's "
+        "headline result lies on the sensitivity curve."
+    )

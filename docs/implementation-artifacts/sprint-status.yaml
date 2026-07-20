@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-20 (1-1a implemented -> review)
+# last_updated: 2026-07-20 (1-1a code review: 12 patches applied -> done)
 # project: crm-targeting-lab
 # project_key: NOKEY
 # tracking_system: file-system
@@ -76,7 +76,7 @@ story_location: docs/implementation-artifacts
 
 development_status:
   epic-1: in-progress
-  1-1a-scaffolding-config-structure-guards: review
+  1-1a-scaffolding-config-structure-guards: done
   1-1b-freshness-atomic-write-data-acquisition: backlog
   1-2-customer-value-single-definition: backlog
   1-3-rfm-proxy-features: backlog

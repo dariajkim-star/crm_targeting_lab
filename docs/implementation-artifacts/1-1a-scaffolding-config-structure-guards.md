@@ -4,7 +4,7 @@ baseline_commit: 1603cf20b61a3251aeed29846d448a87bb785f83
 
 # Story 1.1a: 프로젝트 골격·설정 단일 출처·구조 가드 테스트
 
-Status: review
+Status: done
 
 ## Story
 
@@ -72,6 +72,27 @@ so that 이후 모든 코드가 첫 줄부터 AD-1 격리·AD-4 단일 출처·A
 - [x] **T8. 실행·커밋**
   - [x] `pytest` 전체 green 확인 (25 passed)
   - [x] 스토리 단위 커밋(conventions 8항)
+
+### Review Findings
+
+3-레이어 병렬 리뷰(2026-07-20): Blind Hunter 12건 / Edge Case Hunter 17건 / Acceptance Auditor 9건 → 병합 후 patch 12 / defer 2 / dismiss 7. 교차 검증(2개 이상 레이어 일치) 5건. AC 판정: 4/4 PASS(조건부 2). 참고: 리뷰 진행 중 병행 세션이 `_DATA_DIRS` 제외 패치(+회귀 테스트 2건, data/marts/models 하위 JSON은 설정이 아니라 산출물)를 선반영함 — Blind #1의 절반에 해당, 유지.
+
+- [x] [Review][Patch] P1. config 스캔 `_SKIP_DIRS`에 `.claude`·`.vscode`·`.idea` 등 도구 디렉터리 부재 + 절대경로 `p.parts` 매칭이라 저장소 상위 경로명에 오염됨 — 상대경로 기준으로 전환 [tests/structure/checkers.py] (blind+edge+auditor)
+- [x] [Review][Patch] P2. campaign 순서 체커가 tail 이름만 비교 — `import scipy.sensitivity`도 위반 오탐. `crm.campaign.` 접두 필수화 [tests/structure/checkers.py] (blind+edge)
+- [x] [Review][Patch] P3. `[0-9][0-9]_*.py` glob 밖 파일(`pipelines/download.py`·하위 디렉터리)은 형태 규칙 완전 우회 + scanned에도 미집계 — 패턴 불일치 .py 자체를 명명 위반으로 보고 [tests/structure/checkers.py] (blind+edge, High)
+- [x] [Review][Patch] P4. `tree.body` 최상위만 순회 — `main()` 내부 중첩 def/class로 로직 은닉 가능. `ast.walk`로 전환 [tests/structure/checkers.py] (blind+edge)
+- [x] [Review][Patch] P5. 파이프라인 형태·stateful 체커가 `UnicodeDecodeError` 미처리로 크래시(cp949 파일) — 위반으로 보고하도록 처리 [tests/structure/checkers.py] (blind+edge)
+- [x] [Review][Patch] P6. 커버리지 리포트 테스트 실행 순서 의존(`-k`·randomly·`-x`에서 stale 리포트 검증) + `exists()` 항진 단언 + "40 in v" 헐거운 매칭 — 순서 독립 재구성 [tests/structure/test_repo_structure.py] (blind+edge+auditor, High)
+- [x] [Review][Patch] P7. 상대 import level이 패키지 깊이 초과 시 음수 슬라이스로 오동작 — 가드 추가 [tests/structure/checkers.py] (edge)
+- [x] [Review][Patch] P8. `python -O` 실행 시 config assert 제거 — `if ... raise ValueError`로 전환 [crm/config.py] (edge)
+- [x] [Review][Patch] P9. AC2 가드 실패 경로가 수동 실증뿐, 자동 테스트 부재 — 그리드 밖 값에서 import 실패를 증명하는 테스트 추가 [tests/structure/] (auditor)
+- [x] [Review][Patch] P10. `from crm import ltv` 형태(구현 중 잡은 바로 그 버그)의 레인 회귀 픽스처 부재 [tests/structure/test_checkers_selfcheck.py] (auditor)
+- [x] [Review][Patch] P11. `.env.local`·`.ENV` 등 변형 미탐 — `name.lower().startswith(".env")` [tests/structure/checkers.py] (blind+edge)
+- [x] [Review][Patch] P12. config.py "ASCII-only" 독스트링과 한글 출처 주석의 자기모순 해소(주석은 AC 요구 형식이므로 독스트링 쪽 수정) + 소비처 없는 `set_global_seed()` 제거(스코프 크리프, AD-7 "글로벌 시드는 대체재 아님") [crm/config.py] (auditor)
+- [x] [Review][Defer] D1. 파이프라인 `main(input_paths, output_paths)` 시그니처 존재 검증 부재 — 1.1b가 첫 파이프라인과 함께 추가하는 것이 자연 소속 [tests/structure/checkers.py] — deferred
+- [x] [Review][Defer] D2. 향후 `pyproject.toml` 도입 시 AD-4 가드와 충돌 예고 — 도입 시점에 화이트리스트 등재 [tests/structure/checkers.py] — deferred
+
+Dismissed(7): star import `crm.*`(target 자체가 이미 기록되어 실질 우회 불가), SyntaxError 파일 면제(실행 불가 코드는 위반도 비활성 — 수정 시점에 가드 작동), rglob 정션 루프(로컬 단일 사용자 envelope), mkdir 파일 충돌(예외 메시지로 충분), float 정확 일치(리터럴 유지 전제), gitignore 표기 검사(자기 저장소 통제 하), `PROJECT_ROOT` site-packages 가정(로컬 전용 envelope).
 
 ## Dev Notes
 
@@ -198,6 +219,19 @@ claude-opus-4-8
 
 **1.1b 인계 사항**: `pipelines/`에 첫 파일이 생기는 순간 `AD-8 pipeline shape` 규칙이 0건 → 실스캔으로 전환된다. `structure-guard-coverage.md`의 해당 행이 "NO FILES IN SCOPE YET"에서 파일 수로 바뀌는지 확인할 것.
 
+### Review Findings (code review 2026-07-20, Claude 신규 컨텍스트 — Med 1 / patch 1)
+
+> ⚠️ **관례 편차**: conventions는 GPT 교차 리뷰를 규정한다. 이번 리뷰는 **신규 컨텍스트의 Claude**가 수행했다(구현과 동일 모델 계열). 모델 다양성이 주는 검출력은 확보하지 못했으므로, **GPT 교차 리뷰는 여전히 유효한 후속 절차**다. 아래 발견은 그 대체가 아니라 선행 통과분이다.
+
+- [x] **[Patch][Med] AD-4 config 체커가 데이터 산출물을 오탐** — `find_extra_config_files()`가 접미사(`.json` 등)만으로 판정해 **`data/meta.json`(1.1b 산출)·마트 JSON(에픽 4)을 "unexpected config file"로 검출**한다. 현재는 해당 파일이 없어 green이지만, **1.1b가 첫 데이터를 쓰는 순간 red**가 되고 메시지가 엉뚱한 곳(설정 규칙 위반)을 가리켜 디버깅을 오도한다.
+  - **실증**: 리뷰 중 `data/meta.json`·`marts/segment_profile.json`을 임시 생성 → violations 2건 검출 확인(원복함).
+  - **판단**: AD-4의 의도는 *애플리케이션 설정의 단일화*이지 확장자 금지가 아니다. 파이프라인 출력은 설정이 아니다.
+  - **수정**: `_DATA_DIRS = {data, marts, models}`를 **디렉터리 단위로 스캔 제외**. 파일명 화이트리스트가 아닌 디렉터리 제외를 택한 이유는 해당 트리의 파일명이 기계 생성이라 사전에 알 수 없기 때문(주석에 명시).
+  - **회귀 가드 2종 추가**(AC4 철학의 연장 — 가드가 *물지 않아야 할 것을 물지 않음*도 증명 대상): `test_config_checker_ignores_data_artifacts`(데이터 산출물 3종에 무반응), `test_config_checker_still_flags_config_outside_data_dirs`(제외가 규칙 자체를 무디게 하지 않음 — `crm/settings.json`은 여전히 검출).
+  - 25 → **27 passed**.
+
+**리뷰 총평**: AC1~AC4 전부 충족. 특히 `_imported_modules()`가 상대 임포트와 `from X import a`의 `X.a` 바인딩을 모두 해석하는 점, 스코프 한계를 주석으로 남긴 점, `structure-guard-coverage.md`가 "0 - NO FILES IN SCOPE YET"을 정직하게 기록하는 점이 AC4의 취지에 부합한다. 발견된 1건은 **가드가 미래에 오작동하는 유형**으로, 이 스토리가 경계한 "무의미한 초록"의 이웃 문제(무의미한 빨강)에 해당한다.
+
 ### File List
 
 **신규**
@@ -231,3 +265,4 @@ claude-opus-4-8
 | 날짜 | 변경 |
 |---|---|
 | 2026-07-20 | 스토리 1-1a 구현: Structural Seed, `crm/config.py` 단일 출처(AD-4 assert 포함), 구조 가드 6종 + 자기검증. 25 passed. |
+| 2026-07-20 | 3-레이어 코드리뷰 반영: patch 12건 전량 적용(P1~P12), defer 2건(deferred-work.md), dismiss 7건. 병행 세션 `_DATA_DIRS` 패치 위에 적용. **38 passed**. 핵심: 파이프라인 명명 우회 봉쇄(P3), 리포트 테스트 순서 독립화(P6), config 가드 `raise` 전환+자동 red-path 테스트(P8/P9), `from crm import ltv` 회귀 픽스처 영구화(P10), `set_global_seed` 제거(스코프 크리프). |

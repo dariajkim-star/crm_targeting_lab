@@ -90,6 +90,18 @@ def test_lane_checker_flags_common_importing_a_lane(tmp_path: Path) -> None:
     assert violations
 
 
+def test_lane_checker_flags_submodule_via_parent_package(tmp_path: Path) -> None:
+    """Regression: `from crm import ltv` is the exact form the initial checker
+    missed - it recorded only the module `crm`, so binding the lane package by
+    name slipped through. Keep this fixture forever."""
+    root = _clean_tree(tmp_path)
+    _write(root, "crm/segment/value.py", "from crm import ltv\n")
+
+    violations, _ = checkers.find_lane_violations(root)
+
+    assert any("segment" in v and "ltv" in v for v in violations)
+
+
 def test_lane_checker_passes_clean_tree(tmp_path: Path) -> None:
     root = _clean_tree(tmp_path)
 
@@ -152,6 +164,19 @@ def test_campaign_checker_allows_forward_direction(tmp_path: Path) -> None:
     assert violations == []
 
 
+def test_campaign_checker_ignores_external_name_collisions(tmp_path: Path) -> None:
+    """`import scipy.sensitivity` shares only a tail name with a stage.
+
+    Regression: the original tail-only comparison flagged ANY imported name
+    ending in a stage word, rejecting legitimate third-party imports."""
+    root = _clean_tree(tmp_path)
+    _write(root, "crm/campaign/matrix.py", "import scipy.sensitivity\nfrom anylib import simulate\n")
+
+    violations, _ = checkers.find_campaign_order_violations(root)
+
+    assert violations == []
+
+
 # --- AD-8 / AD-9: pipeline stage shape --------------------------------------
 
 
@@ -163,7 +188,9 @@ def test_pipeline_checker_flags_file_over_forty_lines(tmp_path: Path) -> None:
     violations, scanned = checkers.find_pipeline_shape_violations(root)
 
     assert scanned > 0
-    assert any("40" in v or "lines" in v for v in violations)
+    # Pin the specific message: a loose match ("40" anywhere) could be satisfied
+    # by an unrelated violation and keep this test green through a regression.
+    assert any("02_features.py has 52 lines (max 40)" in v for v in violations)
 
 
 def test_pipeline_checker_flags_helper_def(tmp_path: Path) -> None:
@@ -186,6 +213,55 @@ def test_pipeline_checker_flags_module_level_class(tmp_path: Path) -> None:
     violations, _ = checkers.find_pipeline_shape_violations(root)
 
     assert any("Runner" in v for v in violations)
+
+
+def test_pipeline_checker_flags_nonconforming_filename(tmp_path: Path) -> None:
+    """A stage that dodges NN_<verb>.py naming must be a violation, not exempt.
+
+    Regression for a High finding: the original glob scanned only matching
+    names, so `pipelines/download.py` bypassed every shape rule AND vanished
+    from the scanned count that the coverage report trusts."""
+    root = _clean_tree(tmp_path)
+    _write(root, "pipelines/download.py", "def main(i, o):\n    return None\n")
+
+    violations, scanned = checkers.find_pipeline_shape_violations(root)
+
+    assert any("download.py" in v and "naming" in v for v in violations)
+    assert scanned == 2  # conforming 01_download.py AND the dodger both counted
+
+
+def test_pipeline_checker_flags_nested_subdirectory_file(tmp_path: Path) -> None:
+    root = _clean_tree(tmp_path)
+    _write(root, "pipelines/etl/01_hidden.py", "def main(i, o):\n    return None\n")
+
+    violations, _ = checkers.find_pipeline_shape_violations(root)
+
+    assert any("etl/01_hidden.py" in v for v in violations)
+
+
+def test_pipeline_checker_flags_def_nested_inside_main(tmp_path: Path) -> None:
+    """A helper hidden INSIDE main() is the same rule dodged one indent deeper."""
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "pipelines/05_marts.py",
+        "def main(input_paths, output_paths):\n    def helper():\n        return 1\n    return helper()\n",
+    )
+
+    violations, _ = checkers.find_pipeline_shape_violations(root)
+
+    assert any("helper" in v for v in violations)
+
+
+def test_pipeline_checker_reports_non_utf8_instead_of_crashing(tmp_path: Path) -> None:
+    """A cp949-encoded stage must yield a violation, not an unhandled exception."""
+    root = _clean_tree(tmp_path)
+    path = root / "pipelines" / "02_features.py"
+    path.write_bytes("def main(i, o):\n    return None  # 한글주석\n".encode("cp949"))
+
+    violations, _ = checkers.find_pipeline_shape_violations(root)
+
+    assert any("not valid UTF-8" in v for v in violations)
 
 
 def test_pipeline_checker_passes_conforming_stage(tmp_path: Path) -> None:
@@ -262,3 +338,102 @@ def test_config_checker_allows_whitelisted_tooling_files(tmp_path: Path) -> None
     violations, _ = checkers.find_extra_config_files(root)
 
     assert violations == []
+
+
+def test_config_checker_ignores_data_artifacts(tmp_path: Path) -> None:
+    """A pipeline output is not configuration (regression guard).
+
+    Story 1-1b writes ``data/meta.json`` and epic 4 writes mart JSON. Scanning
+    by suffix alone reported those as "unexpected config file", which would have
+    turned this guard red the moment real data landed - and pointed the reader
+    at the wrong problem. Filenames under these trees are machine-chosen, so the
+    exclusion is by directory, not by a per-file whitelist.
+    """
+    root = _clean_tree(tmp_path)
+    _write(root, "data/meta.json", '{"rows": 10127}\n')
+    _write(root, "marts/segment_profile.json", '{"segments": 4}\n')
+    _write(root, "models/churn_xgb.json", '{"booster": "gbtree"}\n')
+
+    violations, _ = checkers.find_extra_config_files(root)
+
+    assert violations == []
+
+
+def test_config_checker_still_flags_config_outside_data_dirs(tmp_path: Path) -> None:
+    """The data-dir exclusion must not blunt the rule everywhere else."""
+    root = _clean_tree(tmp_path)
+    _write(root, "data/meta.json", '{"rows": 1}\n')
+    _write(root, "crm/settings.json", '{"retention_rate": 0.3}\n')
+
+    violations, _ = checkers.find_extra_config_files(root)
+
+    assert any("crm/settings.json" in v for v in violations)
+    assert not any("meta.json" in v for v in violations)
+
+
+def test_config_checker_flags_dotenv_variants(tmp_path: Path) -> None:
+    """dotenv tooling loads `.env.local` as eagerly as `.env`; NTFS ignores case."""
+    root = _clean_tree(tmp_path)
+    _write(root, ".env.local", "SECRET=1\n")
+    _write(root, ".ENV", "SECRET=2\n")
+
+    violations, _ = checkers.find_extra_config_files(root)
+
+    assert any(".env.local" in v for v in violations)
+    assert any(".ENV" in v for v in violations)
+
+
+def test_config_checker_ignores_tooling_dirs(tmp_path: Path) -> None:
+    """Tool-generated JSON (.claude etc.) is not application config."""
+    root = _clean_tree(tmp_path)
+    _write(root, ".claude/settings.local.json", '{"permissions": []}\n')
+    _write(root, ".vscode/settings.json", '{"editor.rulers": [100]}\n')
+
+    violations, _ = checkers.find_extra_config_files(root)
+
+    assert violations == []
+
+
+def test_skip_dirs_match_relative_parts_not_absolute(tmp_path: Path) -> None:
+    """A repo checked out UNDER a dir named like a skip dir must still be scanned.
+
+    Regression: matching on absolute path parts made e.g. any checkout under a
+    `node_modules`-named ancestor scan zero files and pass every rule silently."""
+    root = _clean_tree(tmp_path / "node_modules" / "repo")
+    _write(root, "crm/segment/value.py", "from crm.ltv import x\n")
+
+    violations, scanned = checkers.find_lane_violations(root)
+
+    assert scanned > 0
+    assert violations
+
+
+# --- AD-4: config guard failure path (the guard must bite, automatically) -----
+
+
+def test_config_grid_guard_raises_on_out_of_grid_value() -> None:
+    """Prove the import-time guard fails when the representative value drifts.
+
+    Executes the REAL crm/config.py source with one value patched out of its
+    grid - not a reimplementation of the check. If someone deletes or weakens
+    the guard, this test goes red. (Guard uses `raise`, not `assert`, so
+    `python -O` cannot strip it.)"""
+    source = (Path(checkers.__file__).parents[2] / "crm" / "config.py").read_text(encoding="utf-8")
+    assert "RETENTION_SUCCESS_RATE: float = 0.30" in source  # patch anchor must exist
+    broken = source.replace("RETENTION_SUCCESS_RATE: float = 0.30", "RETENTION_SUCCESS_RATE: float = 0.33")
+
+    try:
+        exec(compile(broken, "<patched-config>", "exec"), {"__name__": "crm.config_patched", "__file__": str(Path(checkers.__file__).parents[2] / "crm" / "config.py")})
+    except ValueError as err:
+        assert "AD-4" in str(err)
+    else:
+        raise AssertionError("out-of-grid RETENTION_SUCCESS_RATE must fail at import time")
+
+
+def test_config_grid_guard_passes_on_shipped_values() -> None:
+    """The shipped config imports cleanly (sanity companion to the red path)."""
+    import importlib
+
+    import crm.config
+
+    importlib.reload(crm.config)

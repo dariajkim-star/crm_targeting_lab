@@ -42,10 +42,8 @@ def test_repository_has_no_structure_violations() -> None:
     assert not offenders, f"Structure violations found: {offenders}"
 
 
-def test_coverage_report_is_written() -> None:
-    """Emit the per-rule scan coverage so zero-scope rules are visible."""
-    results = _run_all()
-
+def _render_report(results: list[tuple[str, str, list[str], int]]) -> str:
+    """Render the coverage report from checker results (pure function)."""
     lines = [
         "# Structure Guard Coverage",
         "",
@@ -63,25 +61,40 @@ def test_coverage_report_is_written() -> None:
         scope = str(scanned) if scanned else "0 - NO FILES IN SCOPE YET"
         lines.append(f"| {rule} | {desc} | {scope} | {len(violations)} |")
     lines.append("")
+    return "\n".join(lines)
+
+
+def test_coverage_report_is_written_and_faithful() -> None:
+    """Write the per-rule scan coverage and prove the written bytes match.
+
+    The assertion re-reads the file and compares against independently rendered
+    content - asserting mere existence right after write_text would be a
+    tautology.
+    """
+    results = _run_all()
+    content = _render_report(results)
 
     COVERAGE_REPORT.parent.mkdir(parents=True, exist_ok=True)
-    COVERAGE_REPORT.write_text("\n".join(lines), encoding="utf-8")
+    COVERAGE_REPORT.write_text(content, encoding="utf-8")
 
-    assert COVERAGE_REPORT.exists()
+    assert COVERAGE_REPORT.read_text(encoding="utf-8") == _render_report(_run_all())
 
 
 def test_zero_scope_rules_are_declared_not_silent() -> None:
-    """A rule with nothing to scan must say so in the report, not pass quietly."""
+    """A rule with nothing to scan must say so in the report, not pass quietly.
+
+    Deliberately order-independent: the report content is rendered HERE from a
+    fresh checker run, never read from a file another test may or may not have
+    written first (`pytest -k`, random ordering, and `-x` all break that
+    assumption and would validate a stale artifact).
+    """
     results = _run_all()
+    report = _render_report(results)
     zero_scope = [rule for rule, _desc, _v, scanned in results if scanned == 0]
 
-    if not zero_scope:
-        return  # every rule has real files in scope; nothing to declare
-
-    assert COVERAGE_REPORT.exists(), "coverage report must exist before zero-scope rules can be declared"
-    report = COVERAGE_REPORT.read_text(encoding="utf-8")
     for rule in zero_scope:
-        row = next(line for line in report.splitlines() if line.startswith(f"| {rule} |"))
+        row = next((line for line in report.splitlines() if line.startswith(f"| {rule} |")), None)
+        assert row is not None, f"rule '{rule}' missing from the report"
         assert "NO FILES IN SCOPE YET" in row, f"zero-scope rule '{rule}' is passing silently"
 
 
