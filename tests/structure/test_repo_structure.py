@@ -28,6 +28,11 @@ RULES = (
     ("AD-8 pipeline shape", "stages <=40 lines, main() only", checkers.find_pipeline_shape_violations),
     ("AD-1 stateless common", "crm/common holds no fitted state", checkers.find_stateful_common_violations),
     ("AD-4 config single source", "crm/config.py is the only app config", checkers.find_extra_config_files),
+    (
+        "AD-11 single value definition",
+        "only crm/segment/value.py names Total_Trans_Amt",
+        checkers.find_value_recomputation_violations,
+    ),
 )
 
 

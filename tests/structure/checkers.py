@@ -14,6 +14,7 @@ Rules enforced:
   AD-4  crm/config.py is the only application config file
   AD-8  pipeline stages expose main() only
   AD-9  pipelines -> crm -> config direction; campaign inner order
+  AD-11 customer value is defined once, in crm/segment/value.py
 """
 
 from __future__ import annotations
@@ -33,6 +34,11 @@ _CAMPAIGN_ORDER = ("matrix", "simulate", "sensitivity")
 # Pipeline stage shape (AD-8/AD-9).
 _PIPELINE_MAX_LINES = 40
 _PIPELINE_ALLOWED_DEF = "main"
+
+# AD-11: the value proxy column, and the ONE module allowed to name it.
+# Any other module under crm/ referencing it is recomputing customer value.
+_VALUE_COLUMN = "Total_Trans_Amt"
+_VALUE_DEFINITION_MODULE = "crm/segment/value.py"
 
 # Method names that mark a class as carrying fitted state (AD-1).
 _FIT_METHODS = frozenset({"fit", "fit_transform", "partial_fit"})
@@ -334,6 +340,69 @@ def find_stateful_common_violations(root: Path) -> tuple[list[str], int]:
                     violations.append(
                         f"AD-1 stateless common: {path.name} class '{node.name}' defines '{item.name}'"
                     )
+
+    return violations, len(files)
+
+
+def find_value_recomputation_violations(root: Path) -> tuple[list[str], int]:
+    """AD-11: only crm/segment/value.py may name the customer-value column.
+
+    Every other module consumes ``customer_value(df)``. The moment 3-1, 3-2,
+    3-3 and 4-1 each reach for ``Total_Trans_Amt`` directly, the same customer
+    can carry four different values and nothing in the test suite notices -
+    which is the exact scenario AD-11 exists to prevent.
+
+    Detection is AST-based, catching both spellings of a column reference:
+
+        df["Total_Trans_Amt"]   ->  ast.Constant (a string literal)
+        df.Total_Trans_Amt      ->  ast.Attribute
+
+    A text grep would be simpler and wrong: it also matches the name inside
+    comments and docstrings, so a module that merely EXPLAINS the rule would be
+    reported as breaking it. A guard that fires on prose trains people to
+    ignore it.
+
+    Scope note: this rule intentionally does not chase aliasing. A module that
+    binds ``col = "Total_Trans_" + "Amt"`` defeats it. Static analysis cannot
+    close that hole in general, and the rule targets the realistic failure -
+    someone reaching for the obvious column name - not a determined bypass.
+    """
+    violations: list[str] = []
+    # The exempt module is excluded from the SCANNED count as well as from the
+    # rule: reporting it as scanned would overstate the coverage report by the
+    # one file the rule deliberately never inspects.
+    files = [
+        p for p in _iter_python_files(root, "crm")
+        if p.relative_to(root).as_posix() != _VALUE_DEFINITION_MODULE
+    ]
+
+    for path in files:
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        except UnicodeDecodeError:
+            violations.append(f"AD-11 single value definition: {path.name} is not valid UTF-8")
+            continue
+
+        module = _module_name(root, path)
+        for node in ast.walk(tree):
+            # Docstrings are ast.Constant nodes too, but the comparison is
+            # EXACT EQUALITY against the column name - a docstring that merely
+            # mentions Total_Trans_Amt in a sentence is a different string and
+            # does not match. That is what keeps prose out without needing a
+            # special case, and it is why the rule is AST-based rather than a
+            # substring grep.
+            if isinstance(node, ast.Constant) and node.value == _VALUE_COLUMN:
+                violations.append(
+                    f"AD-11 single value definition: {module} references "
+                    f"'{_VALUE_COLUMN}' - consume crm.segment.value.customer_value() instead"
+                )
+            elif isinstance(node, ast.Attribute) and node.attr == _VALUE_COLUMN:
+                violations.append(
+                    f"AD-11 single value definition: {module} accesses "
+                    f".{_VALUE_COLUMN} - consume crm.segment.value.customer_value() instead"
+                )
 
     return violations, len(files)
 

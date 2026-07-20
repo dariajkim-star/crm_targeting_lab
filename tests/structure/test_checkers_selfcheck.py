@@ -514,3 +514,84 @@ def test_config_grid_guard_passes_on_shipped_values() -> None:
     import crm.config
 
     importlib.reload(crm.config)
+
+
+# --- AD-11: single value definition ------------------------------------------
+
+
+def test_value_guard_flags_subscript_recomputation(tmp_path: Path) -> None:
+    """The realistic breach: a consumer indexes the column directly."""
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "crm/campaign/matrix.py",
+        "def value(df):\n    return df['Total_Trans_Amt'] * 0.02\n",
+    )
+
+    violations, scanned = checkers.find_value_recomputation_violations(root)
+
+    assert scanned > 0
+    assert any("matrix" in v for v in violations)
+
+
+def test_value_guard_flags_attribute_access(tmp_path: Path) -> None:
+    """``df.Total_Trans_Amt`` is the same breach in the other spelling."""
+    root = _clean_tree(tmp_path)
+    _write(root, "crm/churn/model.py", "def f(df):\n    return df.Total_Trans_Amt\n")
+
+    violations, _ = checkers.find_value_recomputation_violations(root)
+
+    assert any("churn.model" in v for v in violations)
+
+
+def test_value_guard_exempts_the_definition_module(tmp_path: Path) -> None:
+    """value.py is the ONE module allowed to name the column.
+
+    Without this the guard would flag its own definition and the rule would be
+    unimplementable.
+    """
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "crm/segment/value.py",
+        "def customer_value(df):\n    return df['Total_Trans_Amt'].astype(float)\n",
+    )
+
+    violations, _ = checkers.find_value_recomputation_violations(root)
+
+    assert violations == []
+
+
+def test_value_guard_ignores_mentions_in_prose(tmp_path: Path) -> None:
+    """A module explaining the rule is not breaking it.
+
+    This is the false positive a text grep would produce, and the reason the
+    checker is AST-based.
+    """
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "crm/campaign/matrix.py",
+        '"""Consumes customer_value(); never reads Total_Trans_Amt itself."""\n'
+        "# Total_Trans_Amt must not be referenced here.\n"
+        "def value(df):\n    return df\n",
+    )
+
+    violations, _ = checkers.find_value_recomputation_violations(root)
+
+    assert violations == []
+
+
+def test_value_guard_allows_consuming_the_definition(tmp_path: Path) -> None:
+    """The SANCTIONED pattern must stay green, or the guard blocks correct code."""
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "crm/campaign/matrix.py",
+        "from crm.segment.value import customer_value\n"
+        "def quadrant(df):\n    return customer_value(df) > 3899.0\n",
+    )
+
+    violations, _ = checkers.find_value_recomputation_violations(root)
+
+    assert violations == []
