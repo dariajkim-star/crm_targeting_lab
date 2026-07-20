@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.pytest_cache/
+.ipynb_checkpoints/
+
+# 원천 데이터·학습 아티팩트는 커밋하지 않는다 (재생성 스크립트로 대체)
+data/
+models/
+
+# marts/ 는 커밋 대상 예외 — 집계 산출물이고 작으며 Tableau 연결·리뷰 재현에 필요 (스파인 운영 envelope)
