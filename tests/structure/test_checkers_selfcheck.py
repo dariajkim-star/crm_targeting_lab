@@ -595,3 +595,116 @@ def test_value_guard_allows_consuming_the_definition(tmp_path: Path) -> None:
     violations, _ = checkers.find_value_recomputation_violations(root)
 
     assert violations == []
+
+
+def test_value_guard_flags_imported_value_column_alias(tmp_path: Path) -> None:
+    """Importing the column NAME is a bypass, not a workaround.
+
+    Verified to slip through the literal-only check: no string constant and no
+    attribute access appears in the consuming module at all.
+    """
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "crm/campaign/matrix.py",
+        "from crm.segment.value import VALUE_COLUMN\n"
+        "def v(df):\n    return df[VALUE_COLUMN] * 0.02\n",
+    )
+
+    violations, _ = checkers.find_value_recomputation_violations(root)
+
+    assert any("matrix" in v for v in violations)
+
+
+def test_value_guard_flags_private_value_column_import(tmp_path: Path) -> None:
+    """The underscore spelling must be blocked too - a leading _ stops nobody."""
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "crm/campaign/matrix.py",
+        "from crm.segment.value import _VALUE_COLUMN\n"
+        "def v(df):\n    return df[_VALUE_COLUMN]\n",
+    )
+
+    violations, _ = checkers.find_value_recomputation_violations(root)
+
+    assert any("matrix" in v for v in violations)
+
+
+def test_value_guard_flags_module_alias_attribute_access(tmp_path: Path) -> None:
+    """Reaching the name through the module object is the same escape."""
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "crm/churn/model.py",
+        "import crm.segment.value as value_definition\n"
+        "def v(df):\n    return df[value_definition.VALUE_COLUMN]\n",
+    )
+
+    violations, _ = checkers.find_value_recomputation_violations(root)
+
+    assert any("churn.model" in v for v in violations)
+
+
+def test_value_guard_flags_dataframe_eval_expression(tmp_path: Path) -> None:
+    """pandas' own expression API hides the column inside a larger string."""
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "crm/campaign/matrix.py",
+        'def v(df):\n    return df.eval("Total_Trans_Amt * 0.02")\n',
+    )
+
+    violations, _ = checkers.find_value_recomputation_violations(root)
+
+    assert any("matrix" in v for v in violations)
+
+
+def test_value_guard_flags_dataframe_query_expression(tmp_path: Path) -> None:
+    """query() is the same hole as eval()."""
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "crm/campaign/matrix.py",
+        'def v(df):\n    return df.query("Total_Trans_Amt > 3899")\n',
+    )
+
+    violations, _ = checkers.find_value_recomputation_violations(root)
+
+    assert any("matrix" in v for v in violations)
+
+
+def test_value_guard_fails_closed_on_unparseable_file(tmp_path: Path) -> None:
+    """A file the rule could not read must NOT pass quietly.
+
+    Skipping it would let a syntax error hide a breach while still counting the
+    file as scanned - the guard would report coverage it never had.
+    """
+    root = _clean_tree(tmp_path)
+    _write(root, "crm/campaign/matrix.py", 'def v(df):\n    return df["Total_Trans_Amt" * 0.02\n')
+
+    violations, _ = checkers.find_value_recomputation_violations(root)
+
+    assert any("matrix" in v for v in violations)
+
+
+def test_value_guard_scanned_count_excludes_unreadable_and_exempt_files(tmp_path: Path) -> None:
+    """`scanned` means files actually PARSED, so coverage is never overstated."""
+    root = _clean_tree(tmp_path)
+    _, baseline = checkers.find_value_recomputation_violations(root)
+    _write(root, "crm/campaign/broken.py", "def v(:\n")
+
+    _, scanned = checkers.find_value_recomputation_violations(root)
+
+    assert scanned == baseline, "an unparseable file must not be counted as scanned"
+
+
+def test_value_guard_scans_modules_in_nested_packages(tmp_path: Path) -> None:
+    """A consumer buried deeper in the tree is still in scope."""
+    root = _clean_tree(tmp_path)
+    _write(root, "crm/campaign/deep/__init__.py", "")
+    _write(root, "crm/campaign/deep/nested.py", "def v(df):\n    return df.Total_Trans_Amt\n")
+
+    violations, _ = checkers.find_value_recomputation_violations(root)
+
+    assert any("nested" in v for v in violations)

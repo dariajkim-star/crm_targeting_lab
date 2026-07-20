@@ -76,6 +76,46 @@ def test_preserves_magnitude_not_just_shape() -> None:
     assert result.iloc[0] == pytest.approx(510.0)
 
 
+def test_preserves_every_value_across_the_observed_range() -> None:
+    """A hardcoded oracle spanning the real data range (510 .. 18,484).
+
+    Avoiding tautology means not RECOMPUTING the transform in the test. It does
+    not mean avoiding a fixed expected result. Property probes alone left real
+    gaps: upper clipping, a piecewise rescale that only touches large values,
+    and NaN-to-zero substitution all passed the property tests, because those
+    tests only ever looked at small values, two ratios and one anchor.
+
+    This oracle is written out by hand, so a wrong implementation cannot agree
+    with it by sharing the same mistake.
+    """
+    df = _frame([0, 510, 3899, 4000, 10000, 18484], index=[9, 2, 7, 1, 8, 3])
+    expected = pd.Series(
+        [0.0, 510.0, 3899.0, 4000.0, 10000.0, 18484.0],
+        index=pd.Index([9, 2, 7, 1, 8, 3]),
+        dtype="float64",
+        name=None,
+    )
+
+    pd.testing.assert_series_equal(customer_value(df), expected)
+
+
+def test_preserves_missing_values() -> None:
+    """Missing must stay missing - substituting 0 would invent a customer.
+
+    A zero-filled value is not a neutral default here: it places the customer
+    at the bottom of the value axis, which is a fabricated business fact.
+    Real BankChurners has no missing values in this column, so nothing in the
+    real-data run would ever reveal the substitution.
+    """
+    df = pd.DataFrame({"Total_Trans_Amt": pd.Series([510.0, float("nan"), 18484.0])})
+
+    result = customer_value(df)
+
+    assert result.iloc[0] == pytest.approx(510.0)
+    assert pd.isna(result.iloc[1])
+    assert result.iloc[2] == pytest.approx(18484.0)
+
+
 def test_preserves_caller_index() -> None:
     """Consumers join on this index, so reindexing or sorting would corrupt them."""
     result = customer_value(_frame([300, 100, 200], index=[7, 3, 5]))
@@ -100,14 +140,48 @@ def test_does_not_mutate_input_frame() -> None:
     pd.testing.assert_frame_equal(df, before)
 
 
-def test_result_is_not_a_view_into_the_input() -> None:
-    """Mutating the output must not reach back into the caller's frame."""
+def test_result_mutation_does_not_modify_input() -> None:
+    """Mutating the output must not reach back into the caller's frame.
+
+    Named for the BEHAVIOUR, not for a memory layout: under pandas 3.x
+    Copy-on-Write the result may legitimately be a lazy view, so asserting
+    "is not a view" would be testing an implementation detail that the
+    contract does not promise.
+    """
     df = _frame([510, 3899])
 
     result = customer_value(df)
     result.iloc[0] = -1.0
 
     assert df["Total_Trans_Amt"].iloc[0] == 510
+
+
+def test_result_mutation_does_not_modify_float_input() -> None:
+    """The same guarantee when NO dtype conversion is needed.
+
+    With int64 input the float cast has to produce a new numeric buffer, so
+    non-aliasing holds for a reason unrelated to the contract. A float64 input
+    exercises the same-dtype path, which is the one that actually depends on
+    the Copy-on-Write guarantee.
+    """
+    df = pd.DataFrame({"Total_Trans_Amt": pd.Series([510.0, 3899.0], dtype="float64")})
+
+    result = customer_value(df)
+    result.iloc[0] = -1.0
+
+    assert df["Total_Trans_Amt"].iloc[0] == pytest.approx(510.0)
+
+
+def test_duplicate_value_columns_fail_loudly() -> None:
+    """pandas allows duplicate labels; df[col] then yields a DataFrame.
+
+    Without this check the Series return contract breaks and the caller sees an
+    opaque pandas TypeError instead of the actual problem.
+    """
+    df = pd.DataFrame([[510, 999]], columns=["Total_Trans_Amt", "Total_Trans_Amt"])
+
+    with pytest.raises(ValueError, match="exactly one"):
+        customer_value(df)
 
 
 def test_missing_column_raises_naming_the_column() -> None:

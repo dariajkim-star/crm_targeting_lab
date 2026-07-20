@@ -39,6 +39,13 @@ _PIPELINE_ALLOWED_DEF = "main"
 # Any other module under crm/ referencing it is recomputing customer value.
 _VALUE_COLUMN = "Total_Trans_Amt"
 _VALUE_DEFINITION_MODULE = "crm/segment/value.py"
+_VALUE_DEFINITION_DOTTED = "crm.segment.value"
+# Names under which value.py could hand the column string to a caller. Importing
+# one of these, or reaching it through the module object, bypasses both the
+# string-literal and the attribute check - so both spellings are named here.
+_VALUE_COLUMN_ALIASES = frozenset({"VALUE_COLUMN", "_VALUE_COLUMN"})
+# pandas expression APIs that take the column name inside a larger string.
+_EXPRESSION_METHODS = frozenset({"eval", "query"})
 
 # Method names that mark a class as carrying fitted state (AD-1).
 _FIT_METHODS = frozenset({"fit", "fit_transform", "partial_fit"})
@@ -352,20 +359,36 @@ def find_value_recomputation_violations(root: Path) -> tuple[list[str], int]:
     can carry four different values and nothing in the test suite notices -
     which is the exact scenario AD-11 exists to prevent.
 
-    Detection is AST-based, catching both spellings of a column reference:
+    Detection is AST-based and covers four routes to the column, all of which
+    were verified to slip past a naive literal-only check:
 
-        df["Total_Trans_Amt"]   ->  ast.Constant (a string literal)
-        df.Total_Trans_Amt      ->  ast.Attribute
+        df["Total_Trans_Amt"]          ->  ast.Constant (a string literal)
+        df.Total_Trans_Amt             ->  ast.Attribute
+        from ...value import VALUE_COLUMN; df[VALUE_COLUMN]
+                                       ->  ast.ImportFrom of the column alias
+        import ...value as v; df[v.VALUE_COLUMN]
+                                       ->  ast.Attribute on the alias name
+        df.eval("Total_Trans_Amt * w") ->  string ARGUMENT of eval/query
 
-    A text grep would be simpler and wrong: it also matches the name inside
-    comments and docstrings, so a module that merely EXPLAINS the rule would be
-    reported as breaking it. A guard that fires on prose trains people to
-    ignore it.
+    The last three are not contrived bypasses. The import route is the obvious
+    thing a consumer would write once value.py exports the name, and
+    ``eval``/``query`` are pandas' own column-expression APIs - both reported
+    zero violations before this was added.
 
-    Scope note: this rule intentionally does not chase aliasing. A module that
-    binds ``col = "Total_Trans_" + "Amt"`` defeats it. Static analysis cannot
-    close that hole in general, and the rule targets the realistic failure -
-    someone reaching for the obvious column name - not a determined bypass.
+    A whole-file text grep would be simpler and wrong: it also matches the name
+    inside comments and docstrings, so a module that merely EXPLAINS the rule
+    would be reported as breaking it. A guard that fires on prose trains people
+    to ignore it. Substring matching is therefore confined to the string
+    arguments of ``eval``/``query``, where a bare mention cannot occur.
+
+    Scope note: this rule still does not chase constructed strings. A module
+    binding ``col = "Total_Trans_" + "Amt"`` defeats it. Static analysis cannot
+    close that hole in general, and the rule targets realistic reaches for the
+    column, not a determined bypass.
+
+    Fail-closed: a file that cannot be parsed is reported as a violation rather
+    than skipped. Silently skipping it would let an unparseable module hide a
+    breach AND inflate the scanned count with a file nothing inspected.
     """
     violations: list[str] = []
     # The exempt module is excluded from the SCANNED count as well as from the
@@ -375,18 +398,59 @@ def find_value_recomputation_violations(root: Path) -> tuple[list[str], int]:
         p for p in _iter_python_files(root, "crm")
         if p.relative_to(root).as_posix() != _VALUE_DEFINITION_MODULE
     ]
+    # Counts files actually PARSED, so the coverage report never credits a file
+    # the rule failed to read.
+    scanned = 0
 
     for path in files:
+        module = _module_name(root, path)
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))
-        except SyntaxError:
+        except SyntaxError as err:
+            violations.append(
+                f"AD-11 single value definition: {module} could not be scanned "
+                f"(syntax error at line {err.lineno}) - the rule fails closed"
+            )
             continue
         except UnicodeDecodeError:
             violations.append(f"AD-11 single value definition: {path.name} is not valid UTF-8")
             continue
+        scanned += 1
 
-        module = _module_name(root, path)
         for node in ast.walk(tree):
+            # `from crm.segment.value import VALUE_COLUMN` - the column string
+            # arrives bound to a local name, so no literal ever appears.
+            if isinstance(node, ast.ImportFrom):
+                if node.module == _VALUE_DEFINITION_DOTTED and any(
+                    alias.name in _VALUE_COLUMN_ALIASES for alias in node.names
+                ):
+                    violations.append(
+                        f"AD-11 single value definition: {module} imports the value column "
+                        f"name from {_VALUE_DEFINITION_DOTTED} - consume customer_value() instead"
+                    )
+                continue
+            # `value_module.VALUE_COLUMN` - same escape via the module object.
+            if isinstance(node, ast.Attribute) and node.attr in _VALUE_COLUMN_ALIASES:
+                violations.append(
+                    f"AD-11 single value definition: {module} accesses .{node.attr} "
+                    f"- the value column name is private to {_VALUE_DEFINITION_MODULE}"
+                )
+                continue
+            # `df.eval("Total_Trans_Amt * 0.02")` / `df.query("Total_Trans_Amt > x")`
+            # - pandas parses the column out of a larger string, so exact
+            # equality cannot see it. Substring matching is safe HERE because
+            # the scope is an expression argument, not arbitrary prose.
+            if isinstance(node, ast.Call):
+                func = node.func
+                name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+                if name in _EXPRESSION_METHODS:
+                    for arg in node.args:
+                        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                            if _VALUE_COLUMN in arg.value:
+                                violations.append(
+                                    f"AD-11 single value definition: {module} passes "
+                                    f"'{_VALUE_COLUMN}' to {name}() - consume customer_value() instead"
+                                )
             # Docstrings are ast.Constant nodes too, but the comparison is
             # EXACT EQUALITY against the column name - a docstring that merely
             # mentions Total_Trans_Amt in a sentence is a different string and
@@ -404,7 +468,7 @@ def find_value_recomputation_violations(root: Path) -> tuple[list[str], int]:
                     f".{_VALUE_COLUMN} - consume crm.segment.value.customer_value() instead"
                 )
 
-    return violations, len(files)
+    return violations, scanned
 
 
 def find_extra_config_files(root: Path) -> tuple[list[str], int]:

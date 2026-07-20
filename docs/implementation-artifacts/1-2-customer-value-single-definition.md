@@ -194,8 +194,58 @@ std 3397.13 | index_equal True | top10pct_share 29.8%
 - `docs/implementation-artifacts/1-2-customer-value-single-definition.md` — UPDATE, 본 기록
 - `docs/implementation-artifacts/sprint-status.yaml` — UPDATE, 1-2 상태 전이
 
+## Senior Developer Review (외부 LLM, 2026-07-20)
+
+**판정: Request changes** — High 2, Medium 3, Low 1, Defer 1. **6건 전부 실증 재현 후 패치**, M2는 결정 대기로 열어둠.
+
+리뷰의 핵심 지적: *"`customer_value()`의 계산 결과는 정상이다. 하지만 AD-11을 기계적으로 봉인했다는 주장은 아직 성립하지 않는다."* — 타당했다.
+
+### 실증 확인 결과 (패치 전)
+
+| 항목 | 주장 | 실증 |
+|---|---|---|
+| H1 | 공개 `VALUE_COLUMN` import로 가드 우회 | ✅ 2개 패턴 모두 **위반 0건** |
+| H2 | `df.eval()` / `df.query()` 미탐지 | ✅ 둘 다 **통과** |
+| H3 | 단위 테스트가 현실적 오구현을 통과시킴 | ✅ 변이 3건이 **9개 테스트 전부 통과** |
+| M1 | `SyntaxError` 파일을 건너뛰며 scanned엔 계상 | ✅ 검사 실패했는데 `scanned=11` |
+| M3 | 중복 컬럼에서 Series 계약 파손 | ✅ `TypeError: must pass an index to rename` |
+| L1 | pandas 3.x CoW 설명 오류 | ✅ 주석만 틀림, **행동 보장은 성립** |
+
+### 적용한 패치
+
+- **[High] H1 우회 봉쇄**: `VALUE_COLUMN` → `_VALUE_COLUMN` 비공개화 + `__all__ = ["customer_value"]`. 가드가 **컬럼명 심볼 import**(공개·비공개 양쪽)와 **모듈 경유 어트리뷰트 접근**을 검출. 밑줄만으로는 아무도 못 막으므로 가드로 이중 봉쇄.
+- **[High] H2 `eval`/`query`**: 호출 인수 문자열에 컬럼명이 **포함**되면 위반. 부분문자열 매칭은 **`eval`/`query` 인수로만 한정** — 일반 문자열에 적용하면 산문 오탐이 되살아난다.
+- **[High] H3 테스트 보강**: 실데이터 전 구간(0~18,484) **하드코딩 oracle** + **결측 보존** 테스트 추가. *"동어반복 회피"가 "고정 기댓값 회피"를 뜻하는 게 아니었다* — 항등 투영에서는 손으로 쓴 oracle이 동어반복이 아니다. 성질 검사만으로는 상단 클리핑·구간별 재스케일링·NaN→0이 전부 통과했다.
+- **[Med] M1 fail-closed**: 파싱 불가 파일을 **위반으로 보고**, `scanned`는 실제 파싱 성공 수로 정정.
+- **[Med] M3 중복 컬럼**: 개수를 세어 `ValueError` fail-fast(메시지에 실제 개수 포함).
+- **[Low] L1**: 주석을 CoW 계약 기준으로 정정, 테스트명 `test_result_is_not_a_view_into_the_input` → `test_result_mutation_does_not_modify_input`(메모리 배치가 아니라 행동을 주장). **동일 dtype 경로**(float64 입력) 테스트 추가 — 기존 int64 입력은 어차피 새 버퍼가 생겨 계약과 무관한 이유로 통과하고 있었다.
+
+### 패치 후 재실증
+
+우회 6종 전부 검출, 오탐 컨트롤 2건(산문·정상 소비)은 통과 유지:
+```
+H1a from-import / H1b module alias / H1c private / H2a eval / H2b query : 전부 caught
+M1 syntax error : scanned=10(계상 제외) + violation 1
+(control) prose only / sanctioned use : violations=0
+```
+변이 테스트 — 4건 전부 사살(정규화 변이 추가 투입):
+```
+clip_upper(4000)  -> 2 failed  KILLED
+piecewise /1000   -> 2 failed  KILLED
+fillna(0)         -> 1 failed  KILLED
+normalize         -> 5 failed  KILLED
+```
+실데이터 재검증 동일(10,127행, float64, 결측 0, 510/3,899/18,484, 인덱스 보존). **87 → 99 passed**(+12: 단위 +4, 자기검증 픽스처 +8), 회귀 0.
+
+### 미결 — 결정 대기 (M2)
+
+**AD-11 가드의 범위가 확정되지 않았다.** 현재 가드는 "재계산 금지"보다 강한 **"이름 언급 금지"**라, 스키마 검증·dtype 맵·`Literal` 타입 선언 같은 정당한 메타데이터도 막는다. A안(이름 자체를 `value.py` 소유로 확정 + AD-11 소급 개정) / B안(데이터 접근 문맥으로 축소) 중 선택이 필요하며, **1-3이 첫 실소비자이므로 그 스토리가 스키마를 실제로 어떻게 다루는지 보고 결정**하는 편이 근거가 확실하다. `deferred-work.md`에 기록.
+
+또한 **`customer_value()` 출력의 재가중 금지**는 이 가드가 보장하지 않는다(`customer_value(df) * 0.02`는 통과). 모든 산술 금지는 3-1·3-2를 오탐하므로 **소비자별 계약 테스트**(sentinel Series monkeypatch)로 3-1·3-2·3-3·4-1에 분산 위임한다.
+
 ## Change Log
 
 | 날짜 | 변경 |
 |---|---|
 | 2026-07-20 | 스토리 1-2 구현: 가치 단일 정의 함수 + AD-11 재계산 금지 가드 + 프록시 리포트. 73 → 87 passed, 회귀 0. Status → review |
+| 2026-07-20 | 외부 코드리뷰 6건 패치(H1 import 우회·H2 eval/query·H3 테스트 검출력·M1 fail-closed·M3 중복컬럼·L1 CoW). 87 → 99 passed, 회귀 0. M2(가드 범위)는 1-3까지 미결 |

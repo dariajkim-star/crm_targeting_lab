@@ -42,8 +42,21 @@ from __future__ import annotations
 
 import pandas as pd
 
+__all__ = ["customer_value"]
+
 # The measured spend proxy backing the value axis (AD-11, SPEC CAP-5).
-VALUE_COLUMN = "Total_Trans_Amt"
+#
+# PRIVATE ON PURPOSE. Exporting this as a public constant handed callers a
+# legitimate import path straight through the AD-11 guard:
+#
+#     from crm.segment.value import VALUE_COLUMN
+#     df[VALUE_COLUMN] * arbitrary_weight   # no literal, no attribute, no violation
+#
+# That is not a contrived bypass - it is the obvious thing a consumer would
+# write, and the guard reported zero violations for it. The leading underscore
+# states the intent; the guard now also rejects importing this name (an
+# underscore alone stops nobody).
+_VALUE_COLUMN = "Total_Trans_Amt"
 
 
 def customer_value(df: pd.DataFrame) -> pd.Series:
@@ -65,17 +78,33 @@ def customer_value(df: pd.DataFrame) -> pd.Series:
     Raises:
         KeyError: if the required column is absent. The message names the
             column, so a caller can act on it without reading this source.
+        ValueError: if the column appears more than once. pandas allows
+            duplicate column labels, and ``df[col]`` then returns a DataFrame
+            rather than a Series - the return contract would be violated, and
+            the failure surfaced as an opaque pandas TypeError several lines
+            later instead of naming the real problem here.
     """
-    if VALUE_COLUMN not in df.columns:
+    matches = sum(column == _VALUE_COLUMN for column in df.columns)
+    if matches == 0:
         raise KeyError(
-            f"customer_value requires the column '{VALUE_COLUMN}' and it is "
+            f"customer_value requires the column '{_VALUE_COLUMN}' and it is "
             f"absent from the frame passed in."
+        )
+    if matches > 1:
+        raise ValueError(
+            f"customer_value requires exactly one '{_VALUE_COLUMN}' column, "
+            f"found {matches}. A duplicated label makes the value axis "
+            f"ambiguous - deduplicate upstream rather than picking one here."
         )
 
     # Explicit float cast: the real column is int64, and AC1 fixes the return
     # contract at Series[float]. Relying on the source dtype would make the
     # contract an accident of the input data.
-    # `.astype` returns a copy even when the dtype already matches (copy=True
-    # is the default), which is what keeps the result from aliasing `df`.
-    values = df[VALUE_COLUMN].astype(float)
+    #
+    # Aliasing: under the pandas 3.x Copy-on-Write contract, mutating the
+    # returned Series never propagates back into `df`. (Do NOT describe this as
+    # "astype always copies" - in pandas 3.x the `copy` argument is ignored and
+    # the result may be a lazy CoW view. The guarantee we rely on is the
+    # BEHAVIOUR, not an eager memory copy.)
+    values = df[_VALUE_COLUMN].astype(float)
     return values.rename(None)
