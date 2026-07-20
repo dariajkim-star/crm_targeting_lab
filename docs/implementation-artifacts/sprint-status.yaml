@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-20
+# last_updated: 2026-07-20 (1-1a created -> ready-for-dev; epic-1 -> in-progress)
 # project: crm-targeting-lab
 # project_key: NOKEY
 # tracking_system: file-system
@@ -75,8 +75,8 @@ tracking_system: file-system
 story_location: docs/implementation-artifacts
 
 development_status:
-  epic-1: backlog
-  1-1a-scaffolding-config-structure-guards: backlog
+  epic-1: in-progress
+  1-1a-scaffolding-config-structure-guards: ready-for-dev
   1-1b-freshness-atomic-write-data-acquisition: backlog
   1-2-customer-value-single-definition: backlog
   1-3-rfm-proxy-features: backlog
