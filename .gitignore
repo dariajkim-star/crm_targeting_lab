@@ -10,3 +10,7 @@ data/
 models/
 
 # marts/ 는 커밋 대상 예외 — 집계 산출물이고 작으며 Tableau 연결·리뷰 재현에 필요 (스파인 운영 envelope)
+
+# 세션 작업물 (외부 리뷰 요청 패키지, 임시 메모 등). 스토리 산출물이 아니므로 커밋하지 않는다.
+# 공식 산출물의 자리는 docs/implementation-artifacts/ 다.
+scratch/
