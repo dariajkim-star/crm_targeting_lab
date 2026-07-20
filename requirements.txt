@@ -12,9 +12,13 @@
 #                                         `lifetimes` is discontinued, this is its
 #                                         official successor and is unproven here)
 
-# --- core (installed by story 1-1a) ---
+# --- core (1-1a: pandas/pytest; 1-1b: pyarrow/kagglehub) ---
 pandas>=3.0,<4.0
 pytest>=9.0,<10.0
+# parquet engine - pandas needs it to write the stage outputs
+pyarrow>=21.0
+# dataset acquisition; P1 confirmed anonymous download needs no Kaggle account
+kagglehub>=0.3
 
 # --- modelling (declared; installed by the story that first needs it) ---
 # scikit-learn>=1.9,<2.0

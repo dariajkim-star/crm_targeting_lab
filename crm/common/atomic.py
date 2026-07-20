@@ -1,0 +1,87 @@
+"""Atomic writes for pipeline outputs (AD-13: fail fast, no partial outputs).
+
+Contract: a stage either leaves (output + meta) both in place, or leaves the
+target exactly as it was - including preserving the previous good artifact when
+a rerun fails. Temp files live in the TARGET's directory so ``os.replace`` is a
+same-filesystem atomic rename.
+
+``write_with_meta`` is the only sanctioned way for a stage to emit an output:
+it guarantees no orphan artifacts (an output missing its ``.meta.json`` would
+fail every downstream ``verify_inputs`` with a symptom far from the cause).
+
+Functions are stateless (AD-1); the CALLER decides what to write and where
+(AD-9 - orchestration owns I/O policy, this module owns only atomicity).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import uuid
+from pathlib import Path
+from typing import Any, Callable
+
+import pandas as pd
+
+from crm.common.freshness import meta_path_for
+
+
+def _tmp_beside(target: Path) -> Path:
+    """A unique temp path in the target's directory (same-FS rename)."""
+    return target.parent / f".{target.name}.{uuid.uuid4().hex}.tmp"
+
+
+def _atomic_write(target: Path, write: Callable[[Path], None]) -> None:
+    """Run ``write`` against a temp path, then rename over ``target``."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = _tmp_beside(target)
+    try:
+        write(tmp)
+        os.replace(tmp, target)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def atomic_write_bytes(target: Path, data: bytes) -> None:
+    _atomic_write(target, lambda tmp: tmp.write_bytes(data))
+
+
+def atomic_write_text(target: Path, text: str) -> None:
+    _atomic_write(target, lambda tmp: tmp.write_text(text, encoding="utf-8"))
+
+
+def atomic_write_parquet(target: Path, frame: pd.DataFrame) -> None:
+    _atomic_write(target, lambda tmp: frame.to_parquet(tmp, index=False))
+
+
+def write_with_meta(target: Path, writer: Callable[[Path], None], meta: dict[str, Any]) -> None:
+    """Emit (output + meta) as one unit, or leave the target untouched.
+
+    Sequence: write output to temp -> rename into place -> write meta. If the
+    meta step fails AFTER the output landed, the output is rolled back (restored
+    to the previous version when one existed, removed otherwise) so no orphan
+    artifact survives.
+    """
+    previous: Path | None = None
+    if target.exists():
+        # Park the previous good artifact so a failed rerun can restore it.
+        previous = _tmp_beside(target)
+        os.replace(target, previous)
+
+    try:
+        _atomic_write(target, writer)
+        atomic_write_text(meta_path_for(target), json.dumps(meta, indent=2))
+    except BaseException:
+        # Roll back. The meta write is atomic and is the LAST step, so on any
+        # exception a meta file on disk can only be the PREVIOUS run's - keep it
+        # when restoring the previous output (deleting it would manufacture the
+        # exact orphan this module exists to prevent).
+        if previous is not None:
+            os.replace(previous, target)
+        else:
+            target.unlink(missing_ok=True)
+            meta_path_for(target).unlink(missing_ok=True)
+        raise
+    else:
+        if previous is not None:
+            previous.unlink(missing_ok=True)

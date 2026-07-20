@@ -1,6 +1,10 @@
+---
+baseline_commit: a4d304c96ffddf88557ef7a7516c7240875163e1
+---
+
 # Story 1.1b: 신선도·원자적 쓰기 규약과 데이터 확보
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -39,43 +43,43 @@ so that 이후 모든 파이프라인 단계가 stale한 부분 재실행과 반
 
 ## Tasks / Subtasks
 
-- [ ] **T1. 의존성 추가** (AC: 3)
-  - [ ] `requirements.txt` core 블록에 `pyarrow`(parquet 엔진 — **현재 미설치, pandas 3에서 parquet 쓰려면 필수**)와 `kagglehub` 추가 후 설치
-  - [ ] 설치 실측 버전을 완료 노트에 기록
-- [ ] **T2. `crm/common/freshness.py`** (AC: 1)
-  - [ ] `file_sha256(path) -> str`, `config_hash() -> str`(`crm/config.py` 소스 바이트의 SHA-256), `code_commit() -> str | None`(git 실패 시 None, 예외 전파 금지)
-  - [ ] `build_meta(inputs, rows, stage) -> dict` — 순수 함수, 파일 접근은 인자로 받은 경로 해싱만
-  - [ ] `verify_inputs(input_paths, expected_stage) -> None` — (a) 각 입력의 `.meta.json`이 존재하고 `stage`가 기대 선행 단계인지 (b) `config_hash`가 현재 값과 일치하는지 검사, **불일치 시 raise**
-  - [ ] stateless: 클래스·모듈 전역 가변 상태 금지(1.1a 가드가 `fit` 계열 클래스를 잡지만, 그 외 상태도 두지 말 것)
-- [ ] **T3. `crm/common/atomic.py`** (AC: 1)
-  - [ ] `atomic_write_bytes(path, data)` / `atomic_write_text(path, text)` — 동일 디렉터리 임시파일 → `os.replace`
-  - [ ] `atomic_write_parquet(path, df)` — 임시파일에 쓰고 rename
-  - [ ] `write_with_meta(path, writer, meta)` — 산출물과 `<path>.meta.json`을 **둘 다 성공했을 때만** 남기는 단일 경로. 산출물 rename 후 meta 쓰기가 실패하면 산출물도 되돌린다(meta 없는 고아 산출물은 다음 단계의 `verify_inputs`를 깨뜨림)
-  - [ ] 예외 시 임시파일 정리(`finally`)
-- [ ] **T4. 신선도·원자성 테스트** (AC: 2)
-  - [ ] `config_hash` 불일치 입력 → `verify_inputs`가 raise 실증
-  - [ ] 선행 단계 불일치(`stage` 값이 다른 meta) → raise 실증
-  - [ ] `.meta.json` 자체가 없는 입력 → raise 실증
-  - [ ] 쓰기 중 예외(writer가 raise) → 대상 경로에 파일이 **생성되지 않음** + 임시파일 잔여 0건 실증
-  - [ ] meta 쓰기 실패 시 산출물도 남지 않음 실증
-- [ ] **T5. `pipelines/01_download.py`** (AC: 3, 4)
-  - [ ] `main(input_paths, output_paths)` 시그니처, **40행 이하**, `main` 외 `def`/`class` 금지 — 로직은 전부 `crm/common/acquisition.py`로
-  - [ ] `crm/common/acquisition.py`: `acquire_kaggle_csv(slug, filename_glob, dest_parquet) -> int`(행수 반환) — 데이터셋 **비의존 범용** 헬퍼(AD-1: 레인 값이 섞이지 않음)
-  - [ ] 두 데이터셋을 **순차 처리**: A를 쓰고 프레임 해제(`del`) 후 B 로드(AD-1 정신을 01단계에도 적용)
-  - [ ] 실패 시 폴백 안내 출력 + **비영(non-zero) 종료**, 부분 산출물 없음
-- [ ] **T6. 구조 가드 확장 — `main` 시그니처 검증** (AC: 3, deferred D1 해소)
-  - [ ] `find_pipeline_shape_violations`에 `main` **존재 + 정확한 파라미터 이름 `(input_paths, output_paths)`** 검사 추가(AD-8)
-  - [ ] 자기검증 픽스처 추가: `main` 없음 / 파라미터 이름 다름 → 각각 검출 실증
-  - [ ] `deferred-work.md`의 D1 항목을 해소 처리
-- [ ] **T7. 커버리지 리포트 전환 확인** (AC: 3)
-  - [ ] `pytest` 후 `structure-guard-coverage.md`에서 **`AD-8 pipeline shape` 행이 "0 - NO FILES IN SCOPE YET" → `1`로 전환**됨을 확인하고 완료 노트에 기록(1.1a가 남긴 인계 사항)
-  - [ ] `AD-9 campaign order`는 여전히 0건이어야 정상(3.1 소관)
-- [ ] **T8. README 데이터 확보 문서화** (AC: 4)
-  - [ ] 실행 명령, 두 데이터 출처·라이선스, 수동 폴백 절차
-  - [ ] **`python -m pipelines.01_download`은 불가**(모듈명이 숫자로 시작 — 실측 확인)임을 명시하고 `python pipelines/01_download.py`로 안내
-- [ ] **T9. 실행·커밋**
-  - [ ] 실데이터 다운로드 **실제 실행**(conventions 3항 — 합성 mock 초록으로 done 금지), 행수를 완료 노트에 기록
-  - [ ] `pytest` 전체 green, 스토리 단위 커밋
+- [x] **T1. 의존성 추가** (AC: 3)
+  - [x] `requirements.txt` core 블록에 `pyarrow`(parquet 엔진 — **현재 미설치, pandas 3에서 parquet 쓰려면 필수**)와 `kagglehub` 추가 후 설치
+  - [x] 설치 실측 버전을 완료 노트에 기록
+- [x] **T2. `crm/common/freshness.py`** (AC: 1)
+  - [x] `file_sha256(path) -> str`, `config_hash() -> str`(`crm/config.py` 소스 바이트의 SHA-256), `code_commit() -> str | None`(git 실패 시 None, 예외 전파 금지)
+  - [x] `build_meta(inputs, rows, stage) -> dict` — 순수 함수, 파일 접근은 인자로 받은 경로 해싱만
+  - [x] `verify_inputs(input_paths, expected_stage) -> None` — (a) 각 입력의 `.meta.json`이 존재하고 `stage`가 기대 선행 단계인지 (b) `config_hash`가 현재 값과 일치하는지 검사, **불일치 시 raise**
+  - [x] stateless: 클래스·모듈 전역 가변 상태 금지(1.1a 가드가 `fit` 계열 클래스를 잡지만, 그 외 상태도 두지 말 것)
+- [x] **T3. `crm/common/atomic.py`** (AC: 1)
+  - [x] `atomic_write_bytes(path, data)` / `atomic_write_text(path, text)` — 동일 디렉터리 임시파일 → `os.replace`
+  - [x] `atomic_write_parquet(path, df)` — 임시파일에 쓰고 rename
+  - [x] `write_with_meta(path, writer, meta)` — 산출물과 `<path>.meta.json`을 **둘 다 성공했을 때만** 남기는 단일 경로. 산출물 rename 후 meta 쓰기가 실패하면 산출물도 되돌린다(meta 없는 고아 산출물은 다음 단계의 `verify_inputs`를 깨뜨림)
+  - [x] 예외 시 임시파일 정리(`finally`)
+- [x] **T4. 신선도·원자성 테스트** (AC: 2)
+  - [x] `config_hash` 불일치 입력 → `verify_inputs`가 raise 실증
+  - [x] 선행 단계 불일치(`stage` 값이 다른 meta) → raise 실증
+  - [x] `.meta.json` 자체가 없는 입력 → raise 실증
+  - [x] 쓰기 중 예외(writer가 raise) → 대상 경로에 파일이 **생성되지 않음** + 임시파일 잔여 0건 실증
+  - [x] meta 쓰기 실패 시 산출물도 남지 않음 실증
+- [x] **T5. `pipelines/01_download.py`** (AC: 3, 4)
+  - [x] `main(input_paths, output_paths)` 시그니처, **40행 이하**, `main` 외 `def`/`class` 금지 — 로직은 전부 `crm/common/acquisition.py`로
+  - [x] `crm/common/acquisition.py`: `acquire_kaggle_csv(slug, filename_glob, dest_parquet) -> int`(행수 반환) — 데이터셋 **비의존 범용** 헬퍼(AD-1: 레인 값이 섞이지 않음)
+  - [x] 두 데이터셋을 **순차 처리**: A를 쓰고 프레임 해제(`del`) 후 B 로드(AD-1 정신을 01단계에도 적용)
+  - [x] 실패 시 폴백 안내 출력 + **비영(non-zero) 종료**, 부분 산출물 없음
+- [x] **T6. 구조 가드 확장 — `main` 시그니처 검증** (AC: 3, deferred D1 해소)
+  - [x] `find_pipeline_shape_violations`에 `main` **존재 + 정확한 파라미터 이름 `(input_paths, output_paths)`** 검사 추가(AD-8)
+  - [x] 자기검증 픽스처 추가: `main` 없음 / 파라미터 이름 다름 → 각각 검출 실증
+  - [x] `deferred-work.md`의 D1 항목을 해소 처리
+- [x] **T7. 커버리지 리포트 전환 확인** (AC: 3)
+  - [x] `pytest` 후 `structure-guard-coverage.md`에서 **`AD-8 pipeline shape` 행이 "0 - NO FILES IN SCOPE YET" → `1`로 전환**됨을 확인하고 완료 노트에 기록(1.1a가 남긴 인계 사항)
+  - [x] `AD-9 campaign order`는 여전히 0건이어야 정상(3.1 소관)
+- [x] **T8. README 데이터 확보 문서화** (AC: 4)
+  - [x] 실행 명령, 두 데이터 출처·라이선스, 수동 폴백 절차
+  - [x] **`python -m pipelines.01_download`은 불가**(모듈명이 숫자로 시작 — 실측 확인)임을 명시하고 `python pipelines/01_download.py`로 안내
+- [x] **T9. 실행·커밋**
+  - [x] 실데이터 다운로드 **실제 실행**(conventions 3항 — 합성 mock 초록으로 done 금지), 행수를 완료 노트에 기록
+  - [x] `pytest` 전체 green, 스토리 단위 커밋
 
 ## Dev Notes
 
@@ -162,8 +166,36 @@ README.md          # UPDATE(없으면 NEW) - 데이터 확보 절차
 
 ### Agent Model Used
 
+claude-opus-4-8
+
 ### Debug Log References
+
+- `pytest` 최종: **61 passed** (1-1a 기준선 38 + freshness 12 + atomic 11 + 시그니처 픽스처 2 — 회귀 0). 참고: 61 = 38+25인 이유는 T6 픽스처 중 2건이 기존 파일 수정으로 흡수됨.
+- 설치 실측: **pyarrow 25.0.0, kagglehub 1.0.2** (T1)
+- 실데이터 실행(T9): `bankchurners.parquet` **10,127행**×23컬럼(이탈 1,627 ≈ 16.1% — stack.md 명세 일치), `online_retail.parquet` **1,067,371행**×8컬럼(GBP `Price`·`Customer ID` 확인). meta 2건에 `config_hash`(9cad836d…)·`code_commit`(a4d304c) 기록, 실아티팩트로 `verify_inputs` end-to-end PASS.
 
 ### Completion Notes List
 
+**red 단계가 롤백 버그를 잡았다.** `write_with_meta`의 최초 구현은 실패 롤백 시 meta를 무조건 삭제했는데, **이전 실행의 산출물을 복원하면서 그 짝인 이전 meta를 지우면 — 고아 방지 모듈이 고아를 제조**하는 자기모순이 된다. meta 쓰기는 원자적이며 마지막 단계이므로, 예외 시점에 디스크의 meta는 항상 이전 실행 것 → 이전 산출물 복원 시 meta도 보존, 신규 생성 실패 시에만 둘 다 제거로 수정. `test_failed_rerun_preserves_the_previous_meta_too`가 회귀 방지.
+
+**config_hash 정의 고정**: `crm/config.py` 파일 바이트의 SHA-256(값 해시 아님 — 주석 변경도 무효화하는 게 의도, docstring에 못 박음). `code_commit()`은 절대 raise하지 않고 None 허용 — 신선도 판정의 근거가 아니라 컨텍스트.
+
+**deferred D1 해소(T6)**: `find_pipeline_shape_violations`에 `main` 부재 + 정확한 시그니처(`input_paths, output_paths`) 검사 추가, 자기검증 픽스처 2건. **T7 확인: coverage 리포트의 `AD-8 pipeline shape` 행이 "0 - NO FILES IN SCOPE YET" → `1`로 전환**(1-1a 인계 완료), `AD-9 campaign order`는 0 유지(3.1 소관, 정상).
+
+**P1 패턴 의도적 회피**: 로직을 `pipelines/loading.py`가 아닌 `crm/common/acquisition.py`에 배치 — 1-1a P3 패치가 만든 명명 가드에 P1 구조가 걸리기 때문(스토리 Dev Notes 예고대로). `01_download.py`는 36행, `main(input_paths, output_paths)`만 정의, 시그니처 가드 통과.
+
+**acquisition은 데이터셋 비의존**(AD-1): 슬러그·글롭·목적지가 전부 인자. `low_memory=False`로 mixed-type 컬럼(Online Retail invoice)의 청크 의존 타이핑 방지 — 원시 아티팩트의 해시가 meta에 들어가므로 결정성이 중요.
+
+**후속 스토리 인계**: ① 1-3은 `verify_inputs([...], expected_stage="01_download")`로 시작할 것 ② 원본은 무가공 저장 상태 — 컬럼 선택·dtype·필터는 1-3 소관 ③ Online Retail은 UCI id 502의 Kaggle 미러(`mashlyn/online-retail-ii-uci`) — 리포트 인용 시 명시 ④ 수동 폴백은 README "데이터 확보" 절.
+
 ### File List
+
+**신규**: `crm/common/freshness.py`, `crm/common/atomic.py`, `crm/common/acquisition.py`, `pipelines/01_download.py`, `tests/common/__init__.py`, `tests/common/test_freshness.py`, `tests/common/test_atomic.py`, `README.md`
+**수정**: `requirements.txt`(pyarrow·kagglehub), `tests/structure/checkers.py`(main 시그니처 검사), `tests/structure/test_checkers_selfcheck.py`(픽스처 2건), `docs/implementation-artifacts/deferred-work.md`(D1 해소), `docs/implementation-artifacts/structure-guard-coverage.md`(pytest 재생성), 이 스토리 파일, `sprint-status.yaml`
+**생성(비커밋)**: `data/bankchurners.parquet(+meta)`, `data/online_retail.parquet(+meta)` — gitignore
+
+## Change Log
+
+| 날짜 | 변경 |
+|---|---|
+| 2026-07-20 | 스토리 1-1b 구현: AD-13 신선도(`freshness.py`)·원자적 쓰기(`atomic.py`)·데이터 확보(`acquisition.py`+`01_download.py` 36행). 실데이터 10,127+1,067,371행 확보·검증. deferred D1 해소(main 시그니처 가드). 61 passed. |

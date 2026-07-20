@@ -9,9 +9,9 @@ starts biting the moment a matching file appears.
 
 | Rule | Enforces | Files scanned | Violations |
 |---|---|---|---|
-| AD-1 lane isolation | crm/segment and crm/churn never meet crm/ltv | 7 | 0 |
-| AD-9 layering | crm/ never imports pipelines/ | 7 | 0 |
+| AD-1 lane isolation | crm/segment and crm/churn never meet crm/ltv | 10 | 0 |
+| AD-9 layering | crm/ never imports pipelines/ | 10 | 0 |
 | AD-9 campaign order | matrix -> simulate -> sensitivity | 0 - NO FILES IN SCOPE YET | 0 |
-| AD-8 pipeline shape | stages <=40 lines, main() only | 0 - NO FILES IN SCOPE YET | 0 |
-| AD-1 stateless common | crm/common holds no fitted state | 1 | 0 |
+| AD-8 pipeline shape | stages <=40 lines, main() only | 1 | 0 |
+| AD-1 stateless common | crm/common holds no fitted state | 4 | 0 |
 | AD-4 config single source | crm/config.py is the only app config | 2 | 0 |

@@ -264,6 +264,26 @@ def test_pipeline_checker_reports_non_utf8_instead_of_crashing(tmp_path: Path) -
     assert any("not valid UTF-8" in v for v in violations)
 
 
+def test_pipeline_checker_flags_missing_main(tmp_path: Path) -> None:
+    """AD-8: a stage IS its main(); a file without one is not a stage."""
+    root = _clean_tree(tmp_path)
+    _write(root, "pipelines/06_report.py", "RESULT = 1\n")
+
+    violations, _ = checkers.find_pipeline_shape_violations(root)
+
+    assert any("06_report.py" in v and "main" in v for v in violations)
+
+
+def test_pipeline_checker_flags_wrong_main_signature(tmp_path: Path) -> None:
+    """AD-8 fixes the signature as main(input_paths, output_paths) - exactly."""
+    root = _clean_tree(tmp_path)
+    _write(root, "pipelines/07_wrong.py", "def main(src, dst):\n    return None\n")
+
+    violations, _ = checkers.find_pipeline_shape_violations(root)
+
+    assert any("07_wrong.py" in v and "input_paths" in v for v in violations)
+
+
 def test_pipeline_checker_passes_conforming_stage(tmp_path: Path) -> None:
     root = _clean_tree(tmp_path)
 

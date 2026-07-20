@@ -259,11 +259,26 @@ def find_pipeline_shape_violations(root: Path) -> tuple[list[str], int]:
             continue
         # Walk the WHOLE tree: a def/class nested inside main() is the same
         # rule dodged one indent deeper.
+        main_def: ast.FunctionDef | ast.AsyncFunctionDef | None = None
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name != _PIPELINE_ALLOWED_DEF:
                 violations.append(f"AD-9 pipeline shape: {path.name} defines '{node.name}' (only main() allowed)")
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                main_def = node
             elif isinstance(node, ast.ClassDef):
                 violations.append(f"AD-9 pipeline shape: {path.name} defines class '{node.name}'")
+
+        # AD-8: a stage IS its main(input_paths, output_paths) - exactly that
+        # signature, so every stage is invocable the same way.
+        if main_def is None:
+            violations.append(f"AD-8 pipeline shape: {path.name} has no main() - a stage IS its main()")
+        else:
+            arg_names = [a.arg for a in main_def.args.args]
+            if arg_names != ["input_paths", "output_paths"]:
+                violations.append(
+                    f"AD-8 pipeline shape: {path.name} main({', '.join(arg_names)}) - "
+                    f"required signature is main(input_paths, output_paths)"
+                )
 
     return violations, len(files)
 
