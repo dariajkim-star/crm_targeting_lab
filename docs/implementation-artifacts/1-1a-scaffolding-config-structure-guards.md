@@ -1,6 +1,10 @@
+---
+baseline_commit: 1603cf20b61a3251aeed29846d448a87bb785f83
+---
+
 # Story 1.1a: 프로젝트 골격·설정 단일 출처·구조 가드 테스트
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -38,36 +42,36 @@ so that 이후 모든 코드가 첫 줄부터 AD-1 격리·AD-4 단일 출처·A
 
 ## Tasks / Subtasks
 
-- [ ] **T1. 개발 환경 부트스트랩** (AC: 1)
-  - [ ] `.venv` 생성(Python 3.12 — 로컬 확인 3.12.10)
-  - [ ] `requirements.txt` 작성 — stack.md 전체 스택을 **선언**하되, 이 스토리에서 설치하는 것은 `pandas`·`pytest`만. **`pymc-marketing`은 설치하지 않는다**(2.1 dev의 조기 스모크 항목 — 스프린트 주석 참조)
-  - [ ] `pytest.ini` 작성(P1 패턴: `testpaths = tests`, `addopts = -q`)
-- [ ] **T2. Structural Seed 생성** (AC: 1)
-  - [ ] `crm/{common,segment,churn,campaign,ltv}/__init__.py` 스텁 + `crm/__init__.py`
-  - [ ] `pipelines/`, `marts/`, `models/`, `tests/` 디렉터리(빈 디렉터리는 git이 추적 못 하므로 `.gitkeep` 사용)
-  - [ ] `.gitignore` 확인 — 이미 존재하며 `data/`·`models/` 제외 + `marts/` 예외 주석이 반영돼 있음. **재작성 금지, 검토만**
-- [ ] **T3. `crm/config.py` 작성** (AC: 2)
-  - [ ] `RANDOM_SEED`, 경로 상수(`PROJECT_ROOT`/`DATA_DIR`/`MODELS_DIR`/`MARTS_DIR`)
-  - [ ] 정책 가정 상수 + 그리드: `RETENTION_SUCCESS_RATE`, `RETENTION_GRID`, `COST_PER_CONTACT`, `COST_GRID`
-  - [ ] 각 상수에 출처 주석 부착(`# source: 정책가정` / `# source: 경로규약`)
-  - [ ] 모듈 말미에 대표값 포함 `assert` 2건 배치(import 시점 실행)
-- [ ] **T4. 구조 가드 체커 구현** (AC: 3)
-  - [ ] `tests/structure/checkers.py` — 순수 함수 4종: `find_lane_violations()`, `find_layering_violations()`, `find_pipeline_shape_violations()`, `find_stateful_common_violations()`
-  - [ ] 각 체커는 **스캔 루트를 인자로 받는다**(실제 코드베이스와 픽스처 양쪽에 적용 가능해야 함 — AC4의 전제)
-  - [ ] 각 체커는 `(violations, scanned_file_count)`를 반환한다
-- [ ] **T5. 실제 코드베이스 가드 테스트** (AC: 3)
-  - [ ] 4개 체커를 `PROJECT_ROOT`에 적용해 위반 0건 검증
-  - [ ] `scanned_file_count == 0`인 규칙은 skip이 아니라 **명시적으로 로그/기록**하고 통과(AC4)
-- [ ] **T6. 체커 자기 검증 테스트** (AC: 4) ← **이 스토리의 핵심**
-  - [ ] `tests/structure/fixtures/` 아래 합성 위반 트리 생성(또는 `tmp_path`로 동적 생성)
-  - [ ] 위반 픽스처 각각에 대해 체커가 **위반을 검출함**을 assert
-  - [ ] 정상 픽스처에 대해 위반 0건임을 assert
-- [ ] **T7. 설정 파일 단일성 테스트** (AC: 2)
-  - [ ] 저장소에서 `*.yaml`·`*.yml`·`*.toml`·`*.json`·`.env` 스캔 → 설정 목적 파일이 `crm/config.py` 외에 없음을 검증
-  - [ ] **제외 대상 화이트리스트 필요**: `docs/implementation-artifacts/sprint-status.yaml`(BMAD 추적 파일), `pytest.ini`, `.venv/`, `.git/` — 이건 애플리케이션 설정이 아님
-- [ ] **T8. 실행·커밋**
-  - [ ] `pytest` 전체 green 확인
-  - [ ] 스토리 단위 커밋(conventions 8항)
+- [x] **T1. 개발 환경 부트스트랩** (AC: 1)
+  - [x] `.venv` 생성(Python 3.12 — 로컬 확인 3.12.10)
+  - [x] `requirements.txt` 작성 — stack.md 전체 스택을 **선언**하되, 이 스토리에서 설치하는 것은 `pandas`·`pytest`만. **`pymc-marketing`은 설치하지 않는다**(2.1 dev의 조기 스모크 항목 — 스프린트 주석 참조)
+  - [x] `pytest.ini` 작성(P1 패턴: `testpaths = tests`, `addopts = -q`)
+- [x] **T2. Structural Seed 생성** (AC: 1)
+  - [x] `crm/{common,segment,churn,campaign,ltv}/__init__.py` 스텁 + `crm/__init__.py`
+  - [x] `pipelines/`, `marts/`, `models/`, `tests/` 디렉터리(빈 디렉터리는 git이 추적 못 하므로 `.gitkeep` 사용)
+  - [x] `.gitignore` 확인 — 이미 존재하며 `data/`·`models/` 제외 + `marts/` 예외 주석이 반영돼 있음. **재작성 금지, 검토만**
+- [x] **T3. `crm/config.py` 작성** (AC: 2)
+  - [x] `RANDOM_SEED`, 경로 상수(`PROJECT_ROOT`/`DATA_DIR`/`MODELS_DIR`/`MARTS_DIR`)
+  - [x] 정책 가정 상수 + 그리드: `RETENTION_SUCCESS_RATE`, `RETENTION_GRID`, `COST_PER_CONTACT`, `COST_GRID`
+  - [x] 각 상수에 출처 주석 부착(`# source: 정책가정` / `# source: 경로규약`)
+  - [x] 모듈 말미에 대표값 포함 `assert` 2건 배치(import 시점 실행)
+- [x] **T4. 구조 가드 체커 구현** (AC: 3)
+  - [x] `tests/structure/checkers.py` — 순수 함수 **6종**(campaign 내부 순서와 config 단일성을 별도 함수로 분리 — 사유는 완료 노트)
+  - [x] 각 체커는 **스캔 루트를 인자로 받는다**(실제 코드베이스와 픽스처 양쪽에 적용 가능해야 함 — AC4의 전제)
+  - [x] 각 체커는 `(violations, scanned_file_count)`를 반환한다
+- [x] **T5. 실제 코드베이스 가드 테스트** (AC: 3)
+  - [x] 전 체커를 `PROJECT_ROOT`에 적용해 위반 0건 검증
+  - [x] `scanned_file_count == 0`인 규칙은 skip이 아니라 **명시적으로 기록**하고 통과(AC4) — `structure-guard-coverage.md` 산출
+- [x] **T6. 체커 자기 검증 테스트** (AC: 4) ← **이 스토리의 핵심**
+  - [x] `tmp_path`로 합성 위반 트리 동적 생성
+  - [x] 위반 픽스처 각각에 대해 체커가 **위반을 검출함**을 assert
+  - [x] 정상 픽스처에 대해 위반 0건임을 assert
+- [x] **T7. 설정 파일 단일성 테스트** (AC: 2)
+  - [x] 저장소에서 `*.yaml`·`*.yml`·`*.toml`·`*.json`·`*.ini`·`*.cfg`·`.env` 스캔 → 설정 목적 파일이 `crm/config.py` 외에 없음을 검증
+  - [x] **화이트리스트 명시**: `pytest.ini`, `docs/implementation-artifacts/sprint-status.yaml` (+ `.git`/`.venv` 등 스킵 디렉터리)
+- [x] **T8. 실행·커밋**
+  - [x] `pytest` 전체 green 확인 (25 passed)
+  - [x] 스토리 단위 커밋(conventions 8항)
 
 ## Dev Notes
 
@@ -168,8 +172,62 @@ crm-targeting-lab/
 
 ### Agent Model Used
 
+claude-opus-4-8
+
 ### Debug Log References
+
+- `pytest` 최종: **25 passed** (자기검증 20 + 저장소 가드 5)
+- 설치 실측: pandas 3.0.3, pytest 9.1.1, numpy 2.5.1 (stack.md 명세 대역 일치)
 
 ### Completion Notes List
 
+**AC4가 실제 버그 2건을 잡았다 — 이 스토리의 핵심 성과.**
+체커 자기검증 테스트를 먼저 돌렸을 때 `test_campaign_checker_flags_matrix_importing_simulate`와 `..._simulate_importing_sensitivity`가 실패했다. 원인: `_imported_modules()`가 `ast.ImportFrom`에서 **모듈명만 수집하고 임포트된 이름을 무시**해서, `from crm.campaign import simulate`가 `crm.campaign`으로만 보였다. 같은 결함이 레인 격리에도 잠재해 있었다 — `from crm import ltv`가 `crm` 임포트로 보여 **AD-1 위반을 통과시켰을 것**이다. `from X import a`에 대해 `X`와 `X.a`를 모두 수집하도록 수정. 합성 픽스처가 없었다면 이 구멍은 실제 위반이 발생하는 스토리(2.x 이후)까지 잠복했다.
+
+**실제 저장소 실증(합성 픽스처와 별개로 수행).** 실제 트리에 위반 파일 7종을 임시 생성해 검출을 확인하고 원복했다 — 레인(절대/상대 임포트 각 1), 계층, campaign 역방향, 파이프라인 47행, `fit` 보유 클래스, 잉여 yaml. **7/7 CAUGHT.**
+
+**AC2 assert 실증.** `RETENTION_SUCCESS_RATE`를 0.33(그리드 밖)으로 바꾸고 `import crm.config` 실행 → exit 1 + AD-4 메시지 확인 후 원복. import 시점 차단이 실제로 작동한다.
+
+**T4 함수 수 편차(4 → 6).** 스토리는 체커 4종을 나열했으나 AC3이 요구하는 규칙은 5개(레인·계층·campaign 순서·파이프라인 형태·stateless)이고 AC2가 config 단일성을 추가로 요구한다. 규칙당 1함수로 분리하는 편이 위반 메시지와 스캔 카운트를 규칙 단위로 보고할 수 있어 그렇게 구현했다. 규칙 커버리지는 스토리보다 넓지 않다.
+
+**`models/` 디렉터리는 커밋되지 않는다.** `.gitignore`가 `models/`를 제외하므로 `.gitkeep`도 무시된다(`git check-ignore`로 확인). 빈 디렉터리를 강제 커밋하는 대신 `config.ensure_output_dirs()`를 두어 파이프라인이 실행 시 생성하게 했다. import 시점 부작용은 피했다(설정 모듈이 파일시스템을 건드리면 안 됨).
+
+**`crm/common` stateless 검사의 스코프 한계를 코드 주석에 명시.** 정적 분석으로 순수성을 증명할 수는 없다. AD-1을 실제로 위협하는 형태(fit 계열 메서드를 가진 클래스 = 한 레인의 수치를 담아 다른 레인으로 옮길 수 있는 그릇)만 검출하고, 광범위한 변이 분석은 과탐 방지를 위해 의도적으로 제외했다.
+
+**후속 스토리 소관을 침범하지 않았다.** `QUADRANT_RULE`·4분면 Enum(3.1), `meta.json`·원자적 쓰기·`01_download`(1.1b), `pymc-marketing` 설치(2.1)는 손대지 않았다.
+
+**1.1b 인계 사항**: `pipelines/`에 첫 파일이 생기는 순간 `AD-8 pipeline shape` 규칙이 0건 → 실스캔으로 전환된다. `structure-guard-coverage.md`의 해당 행이 "NO FILES IN SCOPE YET"에서 파일 수로 바뀌는지 확인할 것.
+
 ### File List
+
+**신규**
+- `requirements.txt`
+- `pytest.ini`
+- `crm/__init__.py`
+- `crm/config.py`
+- `crm/common/__init__.py`
+- `crm/segment/__init__.py`
+- `crm/churn/__init__.py`
+- `crm/campaign/__init__.py`
+- `crm/ltv/__init__.py`
+- `pipelines/.gitkeep`
+- `marts/.gitkeep`
+- `tests/__init__.py`
+- `tests/structure/__init__.py`
+- `tests/structure/checkers.py`
+- `tests/structure/test_checkers_selfcheck.py`
+- `tests/structure/test_repo_structure.py`
+- `docs/implementation-artifacts/structure-guard-coverage.md` (테스트 생성물, 커밋 대상)
+
+**수정**
+- `docs/implementation-artifacts/1-1a-scaffolding-config-structure-guards.md` (frontmatter·체크박스·Dev Agent Record·Status)
+- `docs/implementation-artifacts/sprint-status.yaml` (1-1a 상태 전이)
+
+**미수정(의도적)**
+- `.gitignore` — 이미 올바름, 검토만 수행
+
+## Change Log
+
+| 날짜 | 변경 |
+|---|---|
+| 2026-07-20 | 스토리 1-1a 구현: Structural Seed, `crm/config.py` 단일 출처(AD-4 assert 포함), 구조 가드 6종 + 자기검증. 25 passed. |

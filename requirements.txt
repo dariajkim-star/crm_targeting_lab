@@ -1,0 +1,23 @@
+# crm-targeting-lab dependencies
+# Versions per docs/specs/spec-crm-targeting-lab/stack.md (web-verified 2026-07-16)
+# and the architecture spine Stack table.
+#
+# INSTALL POLICY (story 1-1a):
+#   Story 1-1a installs only the core block below. The modelling block is declared
+#   here but intentionally NOT installed yet - each stack element is installed by
+#   the story that first needs it, so an unproven dependency cannot break the
+#   scaffolding story.
+#     - scikit-learn / xgboost / shap  -> stories 1-4, 1-6, 1-7
+#     - pymc-marketing                 -> story 2-1 (run the smoke test first;
+#                                         `lifetimes` is discontinued, this is its
+#                                         official successor and is unproven here)
+
+# --- core (installed by story 1-1a) ---
+pandas>=3.0,<4.0
+pytest>=9.0,<10.0
+
+# --- modelling (declared; installed by the story that first needs it) ---
+# scikit-learn>=1.9,<2.0
+# xgboost>=3.3,<4.0
+# shap>=0.52,<0.53
+# pymc-marketing==0.19.4
