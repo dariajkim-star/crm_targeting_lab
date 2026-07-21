@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-21 (1-6a done; 1-6b create-story ready-for-dev; 196 passed)
+# last_updated: 2026-07-21 (1-6b review; AD-5 artifact_id 정체성; 224 passed)
 # project: crm-targeting-lab
 # project_key: NOKEY
 # tracking_system: file-system
@@ -100,7 +100,7 @@ development_status:
   # clean AD-5 seam. 1-6a=models+lift+label(AD-6)+leakage re-audit; 1-6b=artifact
   # identity(AD-5 meta.json/artifact_id) that 1-7 depends on.
   1-6a-churn-model-baseline-lift: done
-  1-6b-artifact-identity-meta: ready-for-dev
+  1-6b-artifact-identity-meta: review
   1-7-shap-drivers-retention-actions: backlog
   epic-1-retrospective: optional
 

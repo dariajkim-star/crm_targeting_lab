@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from crm.churn.artifact import artifact_id, model_meta_path
 from crm.common.freshness import build_meta
 
 
@@ -65,6 +66,71 @@ def test_deleted_model_forces_a_rerun(tmp_path):
     model_p.unlink()  # lose the sibling artifact
     stage.main([feat_p, raw_p], [model_p, scored_p])
     assert model_p.exists(), "stage skipped as fresh with the model missing"
+
+
+def test_stage_stamps_the_model_identity_onto_every_scored_row(tmp_path):
+    # AD-5: the scores must be provably from THIS model, not merely alongside it.
+    stage = _load_stage_03()
+    feat_p, raw_p = _seed_inputs(tmp_path)
+    model_p = tmp_path / "churn_model.joblib"
+    scored_p = tmp_path / "churn_scored.parquet"
+
+    stage.main([feat_p, raw_p], [model_p, scored_p])
+
+    meta = json.loads(model_meta_path(model_p).read_text(encoding="utf-8"))
+    scored = pd.read_parquet(scored_p)
+    assert scored["artifact_id"].unique().tolist() == [meta["artifact_id"]]
+    assert meta["artifact_id"] == artifact_id(model_p.read_bytes())
+    assert meta["features"] and meta["random_seed"] == 42
+    assert meta["metrics"]["xgboost_pr_auc"] > 0
+    assert set(meta["inputs"]) == {"features_customers.parquet", "bankchurners.parquet"}
+
+
+def test_tampered_scored_identity_forces_a_rerun(tmp_path):
+    # The 1-6a crash window (new model + old scores) becomes self-healing: an
+    # inconsistent pair reads as stale instead of being skipped as fresh.
+    stage = _load_stage_03()
+    feat_p, raw_p = _seed_inputs(tmp_path)
+    model_p = tmp_path / "churn_model.joblib"
+    scored_p = tmp_path / "churn_scored.parquet"
+    stage.main([feat_p, raw_p], [model_p, scored_p])
+
+    scored = pd.read_parquet(scored_p)
+    scored["artifact_id"] = "0" * 64
+    scored.to_parquet(scored_p, index=False)
+
+    stage.main([feat_p, raw_p], [model_p, scored_p])
+
+    restored = pd.read_parquet(scored_p)["artifact_id"].unique().tolist()
+    assert restored == [artifact_id(model_p.read_bytes())], "stage skipped a mismatched pair"
+
+
+def test_deleted_identity_record_forces_a_rerun(tmp_path):
+    stage = _load_stage_03()
+    feat_p, raw_p = _seed_inputs(tmp_path)
+    model_p = tmp_path / "churn_model.joblib"
+    scored_p = tmp_path / "churn_scored.parquet"
+    stage.main([feat_p, raw_p], [model_p, scored_p])
+
+    model_meta_path(model_p).unlink()
+    stage.main([feat_p, raw_p], [model_p, scored_p])
+
+    assert model_meta_path(model_p).exists(), "stage skipped with no AD-5 record"
+
+
+def test_stage_skips_a_consistent_pair(tmp_path):
+    # The gate must not rerun forever: an intact triple (model + record + scores)
+    # is left exactly as it was.
+    stage = _load_stage_03()
+    feat_p, raw_p = _seed_inputs(tmp_path)
+    model_p = tmp_path / "churn_model.joblib"
+    scored_p = tmp_path / "churn_scored.parquet"
+    stage.main([feat_p, raw_p], [model_p, scored_p])
+    trained_at = json.loads(model_meta_path(model_p).read_text(encoding="utf-8"))["trained_at"]
+
+    stage.main([feat_p, raw_p], [model_p, scored_p])
+
+    assert json.loads(model_meta_path(model_p).read_text(encoding="utf-8"))["trained_at"] == trained_at
 
 
 def test_stage_output_is_deterministic_across_two_runs(tmp_path):

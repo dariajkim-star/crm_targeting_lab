@@ -1,8 +1,7 @@
-"""Stage 03: train the cross-sectional churn-RISK classifier (+ score, + meta).
+"""Stage 03: cross-sectional churn-RISK classifier + scores + AD-5 identity.
 
-Cross-sectional (AD-6): Attrition_Flag is an after-the-fact snapshot label, not a
-forecast. Verifies both producers, skips when fresh (model AND scored present),
-writes scored parquet (+AD-13 meta) and the model. AD-5 identity is story 1-6b.
+AD-6: Attrition_Flag is an after-the-fact snapshot label, never a forecast.
+Skips only when model, identity record and scored parquet all agree.
 """
 from __future__ import annotations
 import logging
@@ -13,8 +12,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pandas as pd  # noqa: E402
 
 from crm import config  # noqa: E402
-from crm.churn.artifact import save_model  # noqa: E402
-from crm.churn.model import fit_and_compare  # noqa: E402
+from crm.churn.artifact import identity_is_consistent, save_model_with_identity  # noqa: E402
+from crm.churn.model import attach_artifact_id, fit_and_compare  # noqa: E402
 from crm.common.atomic import write_parquet_with_meta  # noqa: E402
 from crm.common.freshness import build_meta, is_output_stale, verify_inputs  # noqa: E402
 
@@ -23,16 +22,17 @@ def main(input_paths: list[Path], output_paths: list[Path]) -> None:
     model_out, scored_out = output_paths
     verify_inputs([features_src], expected_stage="02_features")
     verify_inputs([raw_src], expected_stage="01_download")
-    # Fresh only if the MODEL also exists (a deleted sibling must force a rerun).
-    if model_out.exists() and not is_output_stale(
-            scored_out, [features_src, raw_src], expected_stage="03_train_churn"):
+    # Fresh only if the scores carry THIS model's artifact_id (AD-5 binding).
+    if (model_out.exists() and identity_is_consistent(model_out, scored_out)
+            and not is_output_stale(scored_out, [features_src, raw_src],
+                                    expected_stage="03_train_churn")):
         return
     result = fit_and_compare(pd.read_parquet(features_src), pd.read_parquet(raw_src))
-    save_model(result.model, model_out)
+    aid = save_model_with_identity(result.model, model_out, inputs=[features_src, raw_src],
+                                   seed=config.RANDOM_SEED, metrics=result.metrics())
     meta = build_meta("03_train_churn", [features_src, raw_src], rows=len(result.scored))
-    write_parquet_with_meta(scored_out, result.scored, meta)
-    logging.info("03_train_churn: xgb PR-AUC=%.4f", result.xgboost_pr_auc)
-
+    write_parquet_with_meta(scored_out, attach_artifact_id(result.scored, aid), meta)
+    logging.info("03_train_churn: xgb PR-AUC=%.4f id=%s", result.xgboost_pr_auc, aid[:12])
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")

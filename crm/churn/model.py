@@ -46,6 +46,7 @@ __all__ = [
     "pr_auc_cv",
     "lift",
     "score_customers",
+    "attach_artifact_id",
     "fit_and_compare",
     "ChurnResult",
 ]
@@ -237,6 +238,20 @@ def score_customers(model: object, x: pd.DataFrame) -> pd.Series:
     return pd.Series(proba, index=x.index, name="churn_prob")
 
 
+def attach_artifact_id(scored: pd.DataFrame, artifact_id: str) -> pd.DataFrame:
+    """Stamp the training run's identity onto every scored row (AD-5).
+
+    Returns a NEW frame; the input is left untouched. An empty or non-string id
+    is refused rather than written: a blank stamp looks like provenance while
+    proving nothing, which is worse than no column at all.
+    """
+    if not isinstance(artifact_id, str):
+        raise TypeError(f"artifact_id must be a string, got {type(artifact_id).__name__}")
+    if not artifact_id:
+        raise ValueError("artifact_id must not be empty - it is the proof of provenance")
+    return scored.assign(artifact_id=artifact_id)
+
+
 @dataclass(frozen=True)
 class ChurnResult:
     """Everything 03_train_churn needs: the scoring model, per-customer scores,
@@ -248,6 +263,21 @@ class ChurnResult:
     xgboost_pr_auc: float
     pr_auc_lift: float
     positive_rate: float
+
+    def metrics(self) -> dict[str, float]:
+        """The comparison figures as a machine-readable record (AD-5 meta).
+
+        Without this the baseline/XGBoost comparison exists only in a stage log
+        line and a hand-copied report table - which is how a report and the
+        artifact it describes drift apart unnoticed.
+        """
+        return {
+            "baseline_pr_auc": self.baseline_pr_auc,
+            "xgboost_pr_auc": self.xgboost_pr_auc,
+            "pr_auc_lift": self.pr_auc_lift,
+            "positive_rate": self.positive_rate,
+            "cv_folds": float(CHURN_CV_FOLDS),
+        }
 
 
 def fit_and_compare(features: pd.DataFrame, raw: pd.DataFrame, seed: int = RANDOM_SEED) -> ChurnResult:

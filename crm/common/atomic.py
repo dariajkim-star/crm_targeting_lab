@@ -73,14 +73,26 @@ def write_parquet_with_meta(target: Path, frame: pd.DataFrame, meta: dict[str, A
     write_with_meta(target, lambda tmp: frame.to_parquet(tmp, index=False), meta)
 
 
-def write_with_meta(target: Path, writer: Callable[[Path], None], meta: dict[str, Any]) -> None:
+def write_with_meta(
+    target: Path,
+    writer: Callable[[Path], None],
+    meta: dict[str, Any],
+    meta_path: Path | None = None,
+) -> None:
     """Emit (output + meta) as one unit, or leave the target untouched.
 
     Sequence: write output to temp -> rename into place -> write meta. If the
     meta step fails AFTER the output landed, the output is rolled back (restored
     to the previous version when one existed, removed otherwise) so no orphan
     artifact survives.
+
+    ``meta_path`` defaults to the AD-13 sibling (``<output>.meta.json``). Story
+    1-6b passes it explicitly for the AD-5 IDENTITY record, which AD-5 names
+    ``models/churn_model.meta.json`` - a different file from the freshness
+    sibling. The all-or-nothing guarantee is the same either way, which is why
+    the identity record reuses this rather than re-deriving the rollback.
     """
+    meta_file = meta_path_for(target) if meta_path is None else meta_path
     previous: Path | None = None
     try:
         if target.exists():
@@ -92,7 +104,7 @@ def write_with_meta(target: Path, writer: Callable[[Path], None], meta: dict[str
             os.replace(target, previous)
 
         _atomic_write(target, writer)
-        atomic_write_text(meta_path_for(target), json.dumps(meta, indent=2))
+        atomic_write_text(meta_file, json.dumps(meta, indent=2))
     except BaseException as err:
         # Roll back. The meta write is atomic and is the LAST step, so on any
         # exception a meta file on disk can only be the PREVIOUS run's - keep it
@@ -111,7 +123,7 @@ def write_with_meta(target: Path, writer: Callable[[Path], None], meta: dict[str
                 ) from err
         else:
             target.unlink(missing_ok=True)
-            meta_path_for(target).unlink(missing_ok=True)
+            meta_file.unlink(missing_ok=True)
         raise
     else:
         if previous is not None:

@@ -33,13 +33,12 @@
 
 ## Deferred from: code review of 1-6a-churn-model-baseline-lift (2026-07-21, 외부 GPT 리뷰)
 
-- **두 산출물(model+scored)의 실행 단위 원자성 (리뷰 High-1 잔여)**: 각 파일은 개별적으로 원자적이나
-  `save_model` → `write_parquet_with_meta` 사이 crash 시 새 모델+옛 score가 공존하는 창이 있다.
-  완전성 게이트(model 존재+scored 신선)로 skip-forever는 막았지만, **두 산출물을 한 실행으로 결속**하는
-  것은 1-6b의 `artifact_id`(모델 콘텐츠 해시를 scored에 새김)가 정면 해결한다 — 1-6b 소관.
-- **비교 지표의 machine-readable 저장 (리뷰 문서 정직성)**: 현재 baseline/xgb PR-AUC·lift는 stage 로그와
-  세션 리포트에만 있다(수동 복사). 1-6b `churn_model.meta.json`에 지표 포함을 검토 — AD-5 필드(artifact_id·
-  trained_at·seed·입력 해시·feature 목록·버전)에 `metrics` 추가는 스키마 확장이므로 1-6b create-story에서 결정.
+- ~~**두 산출물(model+scored)의 실행 단위 원자성 (리뷰 High-1 잔여)**~~ — **해소(1-6b)**: `artifact_id`(모델 바이트
+  SHA-256)를 `churn_scored`의 모든 행에 새기고, stage 신선도 게이트가 `identity_is_consistent`로 불일치를 **stale로
+  판정해 재실행**한다. crash 창 자체는 남지만 **탐지 불가 → 자동 복구**로 바뀌었다(과장 금지: 창이 사라진 게 아니다).
+- ~~**비교 지표의 machine-readable 저장 (리뷰 문서 정직성)**~~ — **해소(1-6b)**: `churn_model.meta.json`에 `metrics`
+  블록(baseline/xgb PR-AUC·lift·positive_rate·cv_folds)을 기록. **`artifact_id` 계산에는 넣지 않는다** — 지표는
+  정체성의 일부가 아니라 정체성에 딸린 기록이고, 넣으면 같은 모델이 지표만 바뀌어도 다른 id를 갖게 된다.
 - **churn_prob calibration (리뷰 Med-6)**: in-sample·미보정 점수임을 문서화했고 순위 신호로만 쓰도록
   제한했다. 진짜 확률이 필요해지면(예: 기대절감액 계산이 확률 해석을 요구하면) OOF calibration을 별도
   스토리로 — 3-2 시뮬레이터 설계 시 확률 vs 순위 요구를 확정할 것.

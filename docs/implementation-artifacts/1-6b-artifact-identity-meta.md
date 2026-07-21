@@ -5,7 +5,7 @@ baseline_passed: 196
 
 # Story 1.6b: 아티팩트 정체성과 churn_model.meta.json (AD-5)
 
-Status: ready-for-dev
+Status: review
 
 > **분할 안내**: 원 스토리 1.6을 1-6a/1-6b로 분할(2026-07-21). **1-6a(done)** = 두 모델·CV·PR-AUC·리프트·라벨(AD-6)·
 > 누수 재감사. **1-6b(이 스토리)** = AD-5 아티팩트 **정체성**: `models/churn_model.meta.json` + `artifact_id` +
@@ -46,67 +46,67 @@ so that `churn_prob`와 (곧 나올) SHAP 해석이 **같은 학습 실행에서
 
 ## Tasks / Subtasks
 
-- [ ] **T1. 정체성 모듈 `crm/churn/artifact.py` 확장** (AC: 1, 2, 3, 4) ← 로직 소유, 순수 + 원자적 I/O
-  - [ ] `artifact_id(model_bytes: bytes) -> str`: `sha256_bytes`(1-1b `crm.common.freshness` **재사용**, 재구현 금지) 기반
+- [x] **T1. 정체성 모듈 `crm/churn/artifact.py` 확장** (AC: 1, 2, 3, 4) ← 로직 소유, 순수 + 원자적 I/O
+  - [x] `artifact_id(model_bytes: bytes) -> str`: `sha256_bytes`(1-1b `crm.common.freshness` **재사용**, 재구현 금지) 기반
         콘텐츠 해시. 순수 함수.
-  - [ ] `build_model_meta(model_bytes, inputs: list[Path], features: tuple[str, ...], seed: int) -> dict`:
+  - [x] `build_model_meta(model_bytes, inputs: list[Path], features: tuple[str, ...], seed: int) -> dict`:
         AD-5 필수 필드 — `artifact_id`·`trained_at`(UTC ISO, `datetime.now(timezone.utc).isoformat()`)·`random_seed`·
         `inputs`(파일명→sha256, `file_sha256` 재사용)·`features`(리스트)·`libraries`(dict).
-  - [ ] **`metrics` 필드 포함(결정 완료)**: `baseline_pr_auc`·`xgboost_pr_auc`·`pr_auc_lift`·`positive_rate`·`cv_folds`.
+  - [x] **`metrics` 필드 포함(결정 완료)**: `baseline_pr_auc`·`xgboost_pr_auc`·`pr_auc_lift`·`positive_rate`·`cv_folds`.
         근거: 1-6a 리뷰에서 "비교 지표가 stage 로그와 세션 리포트에만 있어 수동 복사"가 지적됨(deferred-work). 지표는
         **정체성의 일부가 아니라 정체성에 딸린 기록**이므로 `artifact_id` 계산에는 **넣지 않는다**(모델 바이트만 해시).
-  - [ ] `libraries`: `importlib.metadata.version()`로 `xgboost`·`scikit-learn`·`joblib`·`numpy`·`pandas` + `python`
+  - [x] `libraries`: `importlib.metadata.version()`로 `xgboost`·`scikit-learn`·`joblib`·`numpy`·`pandas` + `python`
         (`platform.python_version()`). **하드코딩 금지**(설치본과 어긋나면 기록이 거짓말이 된다).
-  - [ ] `save_model_with_identity(model, model_path, *, inputs, features, seed, metrics) -> str`:
+  - [x] `save_model_with_identity(model, model_path, *, inputs, features, seed, metrics) -> str`:
         `serialize_model`(기존) → `artifact_id` 계산 → 모델 바이트 **원자적 저장** → `churn_model.meta.json` **원자적 저장**
         (`atomic_write_text` + `json.dumps(..., indent=2)`) → `artifact_id` 반환. 기존 `save_model`은 유지하거나 이 함수로
         흡수(호출부 없으면 제거 — File List에 결정 기록).
-  - [ ] `read_model_meta(model_path) -> dict` / `verify_artifact_identity(expected: str, actual: str, context: str) -> None`:
+  - [x] `read_model_meta(model_path) -> dict` / `verify_artifact_identity(expected: str, actual: str, context: str) -> None`:
         불일치 시 **전용 예외로 즉시 raise**(경고·로그 아님, AD-5). 1-7·4-1이 그대로 재사용할 얇은 계약.
-  - [ ] **AD-5 meta 파일명 함정**: AD-5가 정한 이름은 `models/churn_model.meta.json`이다. `meta_path_for()`는
+  - [x] **AD-5 meta 파일명 함정**: AD-5가 정한 이름은 `models/churn_model.meta.json`이다. `meta_path_for()`는
         `churn_model.joblib.meta.json`을 만든다 — **다른 파일**이다. AD-13 sibling meta와 혼동하지 말고, 이름은
         `model_path.with_suffix(".meta.json")`으로 유도할 것(경로 문자열 하드코딩 금지).
-- [ ] **T2. `crm/churn/model.py` — scored에 `artifact_id` 컬럼** (AC: 2)
-  - [ ] `attach_artifact_id(scored: pd.DataFrame, artifact_id: str) -> pd.DataFrame`(순수, 입력 불변):
+- [x] **T2. `crm/churn/model.py` — scored에 `artifact_id` 컬럼** (AC: 2)
+  - [x] `attach_artifact_id(scored: pd.DataFrame, artifact_id: str) -> pd.DataFrame`(순수, 입력 불변):
         `CLIENTNUM`·`churn_prob`·`artifact_id` 3컬럼. 빈 문자열/None `artifact_id`는 **거부**(fail-fast).
-  - [ ] `ChurnResult`·`fit_and_compare`의 **성능·지표는 건드리지 않는다**. 1-6a 실측(baseline 0.4297 / XGBoost 0.8024 /
+  - [x] `ChurnResult`·`fit_and_compare`의 **성능·지표는 건드리지 않는다**. 1-6a 실측(baseline 0.4297 / XGBoost 0.8024 /
         +86.7%)이 그대로 재현되어야 한다 — 달라지면 1-6b가 모델을 바꾼 것이므로 원인 규명 전 커밋 금지.
-- [ ] **T3. stage `pipelines/03_train_churn.py` 배선** (AC: 1, 2, 3) — ⚠️ **현재 정확히 40행 = 상한**
-  - [ ] 순서: `verify_inputs` ×2 → 신선도 게이트(아래) → `fit_and_compare` → `save_model_with_identity`(→ `artifact_id`)
+- [x] **T3. stage `pipelines/03_train_churn.py` 배선** (AC: 1, 2, 3) — ⚠️ **현재 정확히 40행 = 상한**
+  - [x] 순서: `verify_inputs` ×2 → 신선도 게이트(아래) → `fit_and_compare` → `save_model_with_identity`(→ `artifact_id`)
         → `attach_artifact_id` → `write_parquet_with_meta`(scored + AD-13 meta).
-  - [ ] **게이트 강화(AC3)**: 기존 `model_out.exists() and not is_output_stale(...)`에 더해, **모델 meta의 `artifact_id`와
+  - [x] **게이트 강화(AC3)**: 기존 `model_out.exists() and not is_output_stale(...)`에 더해, **모델 meta의 `artifact_id`와
         scored의 `artifact_id`가 일치할 때만 skip**. 불일치·meta 부재·읽기 실패 → **재실행**(fail-closed). 이 판정 로직은
         stage가 아니라 `crm/churn/artifact.py`의 함수 하나(예: `identity_is_consistent(model_path, scored_path) -> bool`)로
         내려 stage는 한 줄로 호출한다(40행 예산 + AD-9 얇은 stage).
-  - [ ] **40행 초과 시**: 로직을 stage에 쓰지 말고 `crm/`로 더 내릴 것. docstring 축약은 최후 수단. `main` 외 def/lambda
+  - [x] **40행 초과 시**: 로직을 stage에 쓰지 말고 `crm/`로 더 내릴 것. docstring 축약은 최후 수단. `main` 외 def/lambda
         금지(가드).
-- [ ] **T4. 테스트** — `tests/churn/test_artifact.py`(NEW) + `tests/churn/test_stage.py`(UPDATE)
-  - [ ] **정체성 결정론(AC4)**: 동일 입력·seed로 2회 → `artifact_id` 동일. **seed 변경 → 다름**, **입력 변경 → 다름**.
-  - [ ] **🚨 joblib 바이트 안정성 선검증(착수 직후 첫 실험)**: `serialize_model`의 바이트가 재실행 간 **완전 동일**한지
+- [x] **T4. 테스트** — `tests/churn/test_artifact.py`(NEW) + `tests/churn/test_stage.py`(UPDATE)
+  - [x] **정체성 결정론(AC4)**: 동일 입력·seed로 2회 → `artifact_id` 동일. **seed 변경 → 다름**, **입력 변경 → 다름**.
+  - [x] **🚨 joblib 바이트 안정성 선검증(착수 직후 첫 실험)**: `serialize_model`의 바이트가 재실행 간 **완전 동일**한지
         먼저 확인하라. 동일하면 그대로 진행. **동일하지 않으면**(joblib/xgboost가 타임스탬프·메모리 주소·딕셔너리 순서를
         섞는 경우) `artifact_id`를 **정규 페이로드**로 재정의한다: `model.get_booster().save_raw(raw_format="json")` +
         `sorted(model.get_params())`의 정규 JSON을 해시. 어느 쪽을 택했든 **근거와 실측을 Debug Log에 기록**하고
         docstring에 정의를 못박을 것(후속 스토리가 해시 정의를 추측하지 않게).
-  - [ ] **meta 스키마**: AD-5 필수 필드 전부 존재 + 타입 검증. `libraries`가 실제 설치 버전과 일치(하드코딩 변이 KILL).
-  - [ ] **결속(AC2)**: scored의 `artifact_id` 유니크값이 1개이고 모델 meta의 값과 동일.
-  - [ ] **불일치 즉시 실패(AC3)**: scored의 `artifact_id`를 손으로 바꾼 뒤 `verify_artifact_identity` → **raise**.
+  - [x] **meta 스키마**: AD-5 필수 필드 전부 존재 + 타입 검증. `libraries`가 실제 설치 버전과 일치(하드코딩 변이 KILL).
+  - [x] **결속(AC2)**: scored의 `artifact_id` 유니크값이 1개이고 모델 meta의 값과 동일.
+  - [x] **불일치 즉시 실패(AC3)**: scored의 `artifact_id`를 손으로 바꾼 뒤 `verify_artifact_identity` → **raise**.
         경고만 하고 통과하는 구현은 이 테스트로 KILL.
-  - [ ] **stage 통합(AC3)**: ① 정상 2회 실행 → 2회차 skip, `artifact_id`·`churn_prob` 동일. ② scored의 `artifact_id`를
+  - [x] **stage 통합(AC3)**: ① 정상 2회 실행 → 2회차 skip, `artifact_id`·`churn_prob` 동일. ② scored의 `artifact_id`를
         변조 → **재실행되어** 일관성 복구. ③ 모델 meta 삭제 → 재실행. ④ 모델 파일 삭제 → 재실행(1-6a 회귀).
-  - [ ] **원자성**: meta 쓰기 실패 시 옛 모델/옛 meta가 남는지(1-1b `write_with_meta` 계약과 동일한 성질) —
+  - [x] **원자성**: meta 쓰기 실패 시 옛 모델/옛 meta가 남는지(1-1b `write_with_meta` 계약과 동일한 성질) —
         monkeypatch로 실패 주입.
-  - [ ] 순수성(입력 프레임 불변), ASCII 런타임 문자열.
-- [ ] **T5. 문서** (AC: 1, 2, 3)
-  - [ ] `docs/implementation-artifacts/churn-model-report-1-6a.md` — UPDATE: "1-6b 인계" 절을 **완료 상태로 갱신**하고
+  - [x] 순수성(입력 프레임 불변), ASCII 런타임 문자열.
+- [x] **T5. 문서** (AC: 1, 2, 3)
+  - [x] `docs/implementation-artifacts/churn-model-report-1-6a.md` — UPDATE: "1-6b 인계" 절을 **완료 상태로 갱신**하고
         실제 `artifact_id`·meta.json 실물(필드 포함 발췌)을 붙인다. 새 리포트 파일을 만들지 말 것(지표 리포트는 1-6a 소유).
-  - [ ] `docs/implementation-artifacts/deferred-work.md` — UPDATE: 1-6a 잔여 3건 중 **①두 산출물 원자성**(게이트로 해소)과
+  - [x] `docs/implementation-artifacts/deferred-work.md` — UPDATE: 1-6a 잔여 3건 중 **①두 산출물 원자성**(게이트로 해소)과
         **②지표 machine-readable 저장**(meta.json `metrics`로 해소)을 **해소 표기**(`~~취소선~~ — 해소(1-6b)` 패턴, 기존 항목
         서식 따를 것). **③calibration은 미해소로 유지**.
-  - [ ] `docs/implementation-artifacts/structure-guard-coverage.md` — pytest로 재생성.
-- [ ] **T6. 실행·커밋**
-  - [ ] 실데이터로 03 재실행 → `churn_model.meta.json` 생성, `churn_scored.parquet`에 `artifact_id` 컬럼.
+  - [x] `docs/implementation-artifacts/structure-guard-coverage.md` — pytest로 재생성.
+- [x] **T6. 실행·커밋**
+  - [x] 실데이터로 03 재실행 → `churn_model.meta.json` 생성, `churn_scored.parquet`에 `artifact_id` 컬럼.
         **2회 실행 결정론**(`artifact_id`·`churn_prob` 동일) 실증.
-  - [ ] `.venv/Scripts/python.exe -m pytest` 전체 green. **기준선 196 passed, 회귀 0.** 스토리 단위 커밋. Obsidian 미러 갱신.
+  - [x] `.venv/Scripts/python.exe -m pytest` 전체 green. **기준선 196 passed, 회귀 0.** 스토리 단위 커밋. Obsidian 미러 갱신.
 
 ## Dev Notes
 
@@ -218,14 +218,81 @@ HEAD 17fdf7e | 196 passed
 
 ### Agent Model Used
 
+claude-opus-4-8 (bmad-dev-story)
+
 ### Debug Log References
+
+**기준선**: HEAD `b79e92b`, 196 passed. 새 의존성 없음, 새 config 상수 없음 → `config_hash` 불변 → 01/02 재실행 불필요
+(예상대로 03만 재실행됨).
+
+**joblib 바이트 안정성 선검증(T4 첫 항목, 결론: 안정)**:
+```
+동일 프로세스 2회 fit -> sha256 2c25ea56... 동일 (249,652 bytes)
+별도 프로세스 2회 실행  -> sha256 2c25ea56... 동일
+booster.save_raw(json)  -> 50d341de... 동일 (대체 경로도 안정하나 불필요)
+```
+→ `artifact_id = sha256(joblib bytes)`로 **확정**. 정규 페이로드 대체 경로는 쓰지 않았고, 정의를 `artifact.py`
+모듈 docstring에 못박았다.
+
+**stage 40행 예산**: identity 배선으로 43행 → docstring 3줄 축약·주석 2줄→1줄·`if __name__` 앞 공백 1줄 정리로
+정확히 40행. 판정 로직은 `identity_is_consistent` 한 줄 호출로 crm에 내림(AD-9).
+
+**`write_with_meta` 확장(재사용 결정)**: AD-5 record는 `churn_model.meta.json`이라 `meta_path_for()`가 만드는
+AD-13 sibling(`churn_model.joblib.meta.json`)과 이름이 다르다. 롤백 로직을 복제하는 대신 `write_with_meta`에
+선택 인자 `meta_path`를 추가(기본값은 기존 동작 그대로 = 하위호환). 덕분에 모델+정체성 기록도 1-1b와 **동일한
+all-or-nothing 계약**을 갖는다.
+
+**실데이터 결과**(n=10,127):
+```
+artifact_id 2f7f09ec0703de6b3057b2fa2ab6d9922d41597adc166da05d7c4334a742851d
+churn_scored 10,127행 전부 동일 id (unique = 1)
+metrics 기록: baseline 0.4297 / xgb 0.8024 / lift +86.7% / positive_rate 0.1607 -> 1-6a와 완전 일치(모델 불변 확인)
+2회차 실행 -> skip(trained_at 불변), 별도 출력 경로 재실행 -> artifact_id·churn_prob 완전 동일(AD-7)
+```
+
+**테스트 검출력(변이 5종, 전부 KILLED)**:
+| 변이 | 결과 |
+|---|---|
+| `verify_artifact_identity`가 raise 대신 통과 | KILLED (test_verify_artifact_identity_raises_on_mismatch) |
+| `identity_is_consistent`가 항상 True | KILLED (test_tampered_scored_identity_forces_a_rerun) |
+| `artifact_id`가 모델 바이트를 무시(상수 해시) | KILLED (test_artifact_id_changes_when_the_training_data_changes) |
+| `libraries` 버전 하드코딩 | KILLED (test_meta_library_versions_are_read_from_the_environment) |
+| `attach_artifact_id`가 빈 id 허용 | KILLED (test_attach_artifact_id_rejects_a_missing_id) |
 
 ### Completion Notes List
 
+- **AC1 충족**: `models/churn_model.meta.json`에 `artifact_id`·`trained_at`(UTC ISO)·`random_seed`·입력 2건 sha256·
+  `features`(RFM 프록시 3개)·`libraries`(6종, `importlib.metadata` 실측)·`metrics`(5개) 기록. 실물은 1-6a 리포트에 첨부.
+- **AC2 충족**: `churn_scored.parquet`이 `CLIENTNUM`·`churn_prob`·`artifact_id` 3컬럼. 10,127행 전부 동일 id.
+- **AC3 충족**: `verify_artifact_identity`는 불일치 시 `ArtifactIdentityError`로 **즉시 raise**(경고 아님).
+  stage 게이트는 `identity_is_consistent`(fail-closed)로 불일치·기록 부재·읽기 실패를 전부 **재실행**으로 처리 —
+  변조·meta 삭제·모델 삭제 3종 통합 테스트로 실증. 정상 상태에서는 skip(무한 재실행 아님)도 테스트로 고정.
+- **AC4 충족**: 동일 입력·seed 2회 → `artifact_id` 동일(실데이터 + 합성 양쪽). seed 변경·입력 변경 → 다른 id.
+- **모델 불변 확인**: 1-6a 실측 지표(0.4297 / 0.8024 / +86.7% / 0.1607)가 소수점까지 동일 재현. 1-6b는 정체성만 추가했다.
+- **정직성**: crash 창은 사라지지 않았다. "탐지 불가 → 자동 복구"로 바뀐 것이며 코드 docstring·리포트·deferred-work에
+  같은 표현으로 기재했다.
+- **`save_model` 유지 결정**: 호출부는 없지만 "정체성 없는 저장"과 "정체성 있는 저장"의 대비를 남기는 편이 후속
+  스토리에 안전하다고 판단해 유지하고, docstring에 파이프라인은 `save_model_with_identity`를 쓴다고 명시했다.
+- **구조 가드 전종 green**(stage 40행·main only·레인·계층·AD-11·stateless common·config 단일).
+- **테스트**: 196 → **224 passed**, 회귀 0.
+
 ### File List
+
+- `crm/churn/artifact.py` — UPDATE, `artifact_id`·`model_meta_path`·`library_versions`·`build_model_meta`·
+  `save_model_with_identity`·`read_model_meta`·`verify_artifact_identity`·`identity_is_consistent`·`ArtifactIdentityError`
+- `crm/churn/model.py` — UPDATE, `attach_artifact_id`(순수) + `ChurnResult.metrics()`
+- `crm/common/atomic.py` — UPDATE, `write_with_meta(..., meta_path=None)` 선택 인자(하위호환)
+- `pipelines/03_train_churn.py` — UPDATE, identity 배선 + 게이트 강화(40행 유지)
+- `tests/churn/test_artifact.py` — NEW, 정체성 정의·meta 스키마·라이브러리 실측·원자성·결속·fail-closed 24건
+- `tests/churn/test_stage.py` — UPDATE, 정체성 스탬프·변조/기록삭제 재실행·정상 skip 4건 추가
+- `docs/implementation-artifacts/churn-model-report-1-6a.md` — UPDATE, AD-5 정체성 절 + meta.json 실물
+- `docs/implementation-artifacts/deferred-work.md` — UPDATE, 1-6a 잔여 2건 해소 표기(calibration은 유지)
+- `docs/implementation-artifacts/1-6b-artifact-identity-meta.md` — UPDATE, 본 기록
+- `docs/implementation-artifacts/sprint-status.yaml` — UPDATE, 상태 전이
 
 ## Change Log
 
 | 날짜 | 변경 |
 |---|---|
 | 2026-07-21 | 스토리 1-6b create-story: AD-5 정체성(artifact_id·churn_model.meta.json·scored 결속·불일치 즉시 실패·게이트 강화). meta에 `metrics` 포함 결정. Status → ready-for-dev. 기준선 196 passed |
+| 2026-07-21 | 스토리 1-6b 구현: artifact_id=sha256(joblib bytes) 확정(바이트 안정성 실측), meta.json 7필드+metrics, scored 결속, 게이트 fail-closed, write_with_meta meta_path 확장. 1-6a 지표 완전 재현. 196 → 224 passed, 회귀 0. Status → review |

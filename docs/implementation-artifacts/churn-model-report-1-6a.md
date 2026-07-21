@@ -74,12 +74,39 @@ churn_prob 0.260 vs 실제 이탈률 0.161). 컬럼명은 스파인(AD-5)이 고
 ## 산출물
 
 - `models/churn_model.joblib` — 학습된 XGBoost(원자적 저장). gitignore.
-- `data/churn_scored.parquet` — `CLIENTNUM` + `churn_prob`(+ AD-13 신선도 meta).
+- `models/churn_model.meta.json` — **AD-5 정체성 기록(1-6b에서 추가)**. gitignore.
+- `data/churn_scored.parquet` — `CLIENTNUM` + `churn_prob` + **`artifact_id`**(+ AD-13 신선도 meta).
+
+## 아티팩트 정체성 (AD-5, 1-6b에서 확립)
+
+`artifact_id`는 **직렬화된 모델 바이트의 SHA-256**이다. 같은 데이터·같은 seed로 재학습하면 같은 id가 나온다
+(내용이 같으면 같은 아티팩트). 실측 재현: 별도 출력 경로로 stage를 다시 돌려도 id와 `churn_prob`이 완전 동일.
+
+```json
+{
+  "artifact_id": "2f7f09ec0703de6b3057b2fa2ab6d9922d41597adc166da05d7c4334a742851d",
+  "trained_at": "2026-07-21T06:36:43.389432+00:00",
+  "random_seed": 42,
+  "inputs": { "features_customers.parquet": "540dba50...", "bankchurners.parquet": "2b48a9f6..." },
+  "features": ["recency_proxy", "frequency_proxy", "monetary_proxy"],
+  "libraries": { "python": "3.12.10", "xgboost": "3.3.0", "scikit-learn": "1.9.0",
+                 "joblib": "1.5.3", "numpy": "2.5.1", "pandas": "3.0.3" },
+  "metrics": { "baseline_pr_auc": 0.4297395964310179, "xgboost_pr_auc": 0.8023605222603141,
+               "pr_auc_lift": 0.8670853906037713, "positive_rate": 0.1606596227905599, "cv_folds": 5.0 }
+}
+```
+
+`churn_scored.parquet`의 10,127행 전부가 이 `artifact_id` 하나를 보유한다(unique = 1).
+**정직한 표현**: 모델 저장과 점수 저장 사이의 crash 창 자체가 사라진 것은 아니다. 그 창에서 죽어도 다음 실행이
+**불일치를 보고 재실행**하므로, "탐지 불가"에서 "자동 복구"로 바뀐 것이다. 위 `metrics` 블록 덕분에 이 표의
+숫자는 더 이상 손으로 옮겨 적은 값이 아니라 아티팩트에 기록된 값이다.
+
+**역할 구분(혼동 금지)**: `artifact_id`(AD-5)는 "두 산출물이 같은 실행에서 나왔나"를 답하고, `.meta.json`의
+`config_hash`+입력 해시(AD-13)는 "다시 계산해야 하나"를 답한다. 입력 드리프트 탐지는 AD-13의 일이다.
 
 ## 다음 스토리 인계
 
-- **1-6b (AD-5 아티팩트 정체성)**: `churn_model.meta.json`(`artifact_id` 콘텐츠 해시·`trained_at`·seed·입력
-  해시·feature 목록·라이브러리 버전) + `churn_scored`에 `artifact_id` 컬럼. 1-6a는 정체성을 **아직 부여하지
-  않았다** — 1-6b가 `churn_prob`↔SHAP 결속을 위해 확립한다.
-- **1-7 (SHAP)**: 동일 아티팩트(1-6b의 artifact_id)에서 SHAP을 `03_train_churn` 단계에서만 산출.
+- **1-7 (SHAP)**: 동일 아티팩트에서 SHAP을 `03_train_churn` 단계에서만 산출하고, `read_model_meta` +
+  `verify_artifact_identity`(1-6b 제공)로 `churn_prob`↔SHAP 동일 출처를 검증한다.
+- **4-1/4-x (마트)**: `05_marts`가 입력 `artifact_id` 불일치 시 즉시 실패 — 같은 두 함수를 재사용한다.
 - **범위 밖**: 피처 확장(모델 성능을 높이려면 02_features에 신호 추가 — 별도 스토리), 관측/예측창(AD-6 금지).
