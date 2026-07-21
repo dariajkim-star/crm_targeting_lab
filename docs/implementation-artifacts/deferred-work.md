@@ -75,3 +75,31 @@
   - **3-2**: 기대절감액 공식의 value 입력이 `customer_value()` 출력인가
   - **3-3**: 민감도 변화가 value 정의 자체를 바꾸지 않는가
   - **4-1**: 마트의 원척도 컬럼이 `customer_value()` 결과와 동일한가
+
+## Deferred from: story 1-7 (SHAP 요인·액션, 2026-07-21)
+
+- **범주형 피처 인코딩** — `Gender`·`Education_Level`·`Income_Category`·`Marital_Status`·`Card_Category`는
+  예측자에서 제외했다. 근거 두 가지: ①AD-7이 요구하는 **사전순 고정 인코딩**은 모든 범주형에 적용되는
+  설계 사안이라 스토리 안에서 즉흥 결정할 일이 아니다 ②인구통계 요인은 **리텐션 액션으로 번역되지 않는다**
+  ("30대라서 이탈 위험"에서 나올 수 있는 액션이 없다). 도입하려면 인코딩 규약을 먼저 정하고, 그 요인이
+  어떤 액션에 대응되는지 답을 가진 스토리가 맡을 것.
+- **`Avg_Open_To_Buy` 제외** — `Credit_Limit - Total_Revolving_Bal`의 완전 중복. 중복 피처는 SHAP에서
+  기여가 임의로 갈려 요인 해석을 흐린다(아래 항목의 실측 사례 참조).
+- **`churn_prob` calibration(1-6a에서 이월, 여전히 미해소)** — 9피처로 재학습 후 평균 0.195 vs 실제
+  0.161로 가까워졌으나 **여전히 보정된 확률이 아니다.** 3-2 시뮬레이터가 확률 해석을 요구하면 OOF
+  calibration을 별도 스토리로 다룰 것.
+- **SHAP 인과 해석 금지의 문서 강제** — 현재는 리포트 문구로만 막고 있다. 마트(4-1)·대시보드(4-3)가
+  요인을 노출할 때 같은 경고가 화면까지 전달되는지는 그 스토리들이 책임진다.
+
+### 실측 교훈 (기록용)
+
+- **중복 피처는 SHAP을 거짓말시킨다**: `Months_Inactive_12_mon`을 예측자에 넣었더니 `recency_proxy`와
+  값이 동일(1-3이 그 컬럼을 그대로 recency 프록시로 씀)해서 XGBoost가 한쪽만 쓰고 다른 쪽 평균 |SHAP|이
+  **정확히 0.0000**이 됐다. 그대로 리포트에 실었으면 "비활성 개월은 이탈과 무관"이라는 정반대 결론이
+  나갈 뻔했다. 예측자 추가 시 **기존 피처와의 동일성·중복성을 먼저 확인할 것.**
+- **shap 배경 샘플의 조용한 절삭**: `shap.TreeExplainer(model, data=<DataFrame>)`는 내부 Independent
+  masker가 `max_samples=100`으로 **말없이 잘라낸다**. config에 200을 선언해두면 기록이 거짓이 된다 —
+  `shap.maskers.Independent(bg, max_samples=len(bg))`로 명시 전달할 것.
+- **xgboost 3.3 + shap 0.52 조합**: `XGBClassifier`가 `enable_categorical=True`를 기본으로 켜고, shap는
+  그 플래그만 보고 interventional 모드를 거부한다(범주형 미사용이어도). `enable_categorical=False`를
+  명시하면 해결되며 예측은 비트 단위로 동일하다(실측).

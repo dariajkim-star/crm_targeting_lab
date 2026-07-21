@@ -8,13 +8,19 @@ each pinned by a property a plausible mis-implementation would break.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from crm.config import CHURN_TREE_METHOD, RANDOM_SEED
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 from crm.churn.model import (
+    ALL_PREDICTOR_COLUMNS,
     PREDICTOR_COLUMNS,
+    RAW_PREDICTOR_COLUMNS,
     build_xy,
     fit_and_compare,
     lift,
@@ -41,11 +47,20 @@ def _raw_with_signal(features: pd.DataFrame, seed: int = 0) -> pd.DataFrame:
     # Attrition depends on frequency (low frequency -> churn), so a real model
     # beats the base rate. Deterministic given seed.
     rng = np.random.default_rng(seed)
+    n = len(features)
     p = 1 / (1 + np.exp((features["frequency_proxy"].to_numpy() - 60) / 15))
-    attr = rng.random(len(features)) < p
+    attr = rng.random(n) < p
     return pd.DataFrame({
         "CLIENTNUM": features["CLIENTNUM"].to_numpy(),
         "Attrition_Flag": np.where(attr, "Attrited Customer", "Existing Customer"),
+        # raw-frame predictors (story 1-7). Inactivity carries signal too, so the
+        # expanded model is not just the old one with noise bolted on.
+        "Total_Relationship_Count": rng.integers(1, 7, n),
+        "Months_Inactive_12_mon": np.where(attr, rng.integers(2, 7, n), rng.integers(0, 4, n)),
+        "Contacts_Count_12_mon": rng.integers(0, 7, n),
+        "Total_Amt_Chng_Q4_Q1": rng.uniform(0.2, 2.0, n),
+        "Total_Ct_Chng_Q4_Q1": rng.uniform(0.2, 2.0, n),
+        "Avg_Utilization_Ratio": rng.uniform(0.0, 1.0, n),
     })
 
 
@@ -101,8 +116,8 @@ def test_lift_is_relative_improvement():
 # --- AC1: leakage exclusion (sprint-status re-audit) -------------------------
 
 def test_predictor_set_excludes_target_and_leakage():
-    assert "Attrition_Flag" not in PREDICTOR_COLUMNS
-    assert not any(c.startswith("Naive_Bayes_Classifier_") for c in PREDICTOR_COLUMNS)
+    assert "Attrition_Flag" not in ALL_PREDICTOR_COLUMNS
+    assert not any(c.startswith("Naive_Bayes_Classifier_") for c in ALL_PREDICTOR_COLUMNS)
 
 
 def test_build_xy_never_puts_target_or_leakage_into_x():
@@ -112,18 +127,16 @@ def test_build_xy_never_puts_target_or_leakage_into_x():
     feat["Attrition_Flag"] = "Existing Customer"
     raw = _raw_with_signal(feat, seed=3)
     x, _ = build_xy(feat, raw)
-    assert list(x.columns) == list(PREDICTOR_COLUMNS)
+    assert list(x.columns) == list(ALL_PREDICTOR_COLUMNS)
     assert "Attrition_Flag" not in x.columns
     assert not [c for c in x.columns if "Naive_Bayes" in c]
 
 
 def test_label_maps_only_attrited_to_positive():
     feat = _features(4, seed=4)
-    raw = pd.DataFrame({
-        "CLIENTNUM": feat["CLIENTNUM"].to_numpy(),
-        "Attrition_Flag": ["Attrited Customer", "Existing Customer",
-                           "Attrited Customer", "Existing Customer"],
-    })
+    raw = _raw_with_signal(feat, seed=4)
+    raw["Attrition_Flag"] = ["Attrited Customer", "Existing Customer",
+                             "Attrited Customer", "Existing Customer"]
     _, y = build_xy(feat, raw)
     assert y.tolist() == [1, 0, 1, 0]
 
@@ -321,3 +334,108 @@ def test_real_full_leakage_columns_never_enter_x():
     x, _ = build_xy(feat, raw)
     for col in _REAL_LEAK_COLUMNS:
         assert col not in x.columns
+
+
+# --- AC0 (story 1-7): raw-frame predictor expansion --------------------------
+
+def test_x_carries_both_feature_and_raw_predictors_in_fixed_order():
+    # The expansion exists so SHAP has something worth explaining. Order is
+    # pinned because SHAP columns are read positionally downstream.
+    feat = _features(60, seed=20)
+    raw = _raw_with_signal(feat, seed=20)
+    x, _ = build_xy(feat, raw)
+    assert list(x.columns) == list(PREDICTOR_COLUMNS) + list(RAW_PREDICTOR_COLUMNS)
+    assert len(ALL_PREDICTOR_COLUMNS) == 8
+
+
+def test_raw_predictors_never_include_the_target_or_the_leakage_pair():
+    # These now come from the SAME frame as the label, so this is no longer a
+    # theoretical guard: a wildcard selection would pull them straight in.
+    assert "Attrition_Flag" not in RAW_PREDICTOR_COLUMNS
+    assert not any(c.startswith("Naive_Bayes_Classifier_") for c in RAW_PREDICTOR_COLUMNS)
+
+
+def test_leakage_columns_present_in_raw_are_not_pulled_into_x():
+    feat = _features(60, seed=21)
+    raw = _raw_with_signal(feat, seed=21)
+    # The real column names from the Kaggle file, verbatim.
+    for suffix in ("_1", "_2"):
+        raw[f"Naive_Bayes_Classifier_Attrition_Flag_Card_Category_Contacts_Count_12_mon"
+            f"_Dependent_count_Education_Level_Months_Inactive_12_mon{suffix}"] = 1.0
+    x, _ = build_xy(feat, raw)
+    assert not [c for c in x.columns if "Naive_Bayes" in c]
+    assert "Attrition_Flag" not in x.columns
+
+
+def test_missing_raw_predictor_is_rejected_not_silently_dropped():
+    feat = _features(30, seed=22)
+    raw = _raw_with_signal(feat, seed=22).drop(columns=["Contacts_Count_12_mon"])
+    with pytest.raises(KeyError, match="Contacts_Count_12_mon"):
+        build_xy(feat, raw)
+
+
+def test_features_table_is_not_required_to_carry_raw_predictors():
+    # The whole point of routing through the raw frame: features_customers (the
+    # CAP-1 segmentation table) stays exactly as story 1-3 built it.
+    feat = _features(30, seed=23)
+    raw = _raw_with_signal(feat, seed=23)
+    assert not set(RAW_PREDICTOR_COLUMNS) & set(feat.columns)
+    build_xy(feat, raw)  # must not raise
+
+
+def test_xgboost_disables_categorical_support_for_shap_compatibility():
+    # shap 0.52 refuses the interventional TreeExplainer when the flag is on,
+    # regardless of whether categorical features exist (measured 2026-07-21).
+    y = pd.Series([1] * 30 + [0] * 70)
+    assert make_xgboost(y).get_params()["enable_categorical"] is False
+
+
+def test_result_exposes_the_exact_x_that_was_scored():
+    # SHAP must explain the rows that were scored, in that order.
+    feat = _features(80, seed=24)
+    raw = _raw_with_signal(feat, seed=24)
+    result = fit_and_compare(feat, raw)
+    assert list(result.x.columns) == list(ALL_PREDICTOR_COLUMNS)
+    assert result.x.index.tolist() == result.scored["CLIENTNUM"].tolist()
+
+
+# --- review round: feature lineage + numeric-only contract --------------------
+
+def test_recency_proxy_is_an_identity_alias_of_months_inactive():
+    # WHY THIS TEST EXISTS (review 4): recency_proxy IS Months_Inactive_12_mon
+    # verbatim under the story 1-3 contract, which is why the raw column is not
+    # a separate predictor. If 1-3 ever redefines recency (e.g. to "months since
+    # last transaction"), this fails and someone must DECIDE whether the raw
+    # column becomes a real second signal - instead of it silently staying out.
+    feat = pd.read_parquet(REPO_ROOT / "data" / "features_customers.parquet")
+    raw = pd.read_parquet(REPO_ROOT / "data" / "bankchurners.parquet")
+    joined = feat[["CLIENTNUM", "recency_proxy"]].merge(
+        raw[["CLIENTNUM", "Months_Inactive_12_mon"]], on="CLIENTNUM", validate="one_to_one"
+    )
+    pd.testing.assert_series_equal(
+        joined["recency_proxy"], joined["Months_Inactive_12_mon"], check_names=False
+    )
+
+
+def test_months_inactive_is_not_a_predictor_while_it_aliases_recency():
+    # Static counterpart to the test above: the duplicate must stay out of X.
+    assert "Months_Inactive_12_mon" not in ALL_PREDICTOR_COLUMNS
+
+
+def test_credit_limit_is_not_a_predictor():
+    # Dropped after ablation (+0.005 PR-AUC, last of nine drivers). Keeping it
+    # out also keeps the CAP-5 value-axis argument off the churn model.
+    assert "Credit_Limit" not in ALL_PREDICTOR_COLUMNS
+
+
+def test_model_and_data_agree_that_x_is_numeric_only():
+    # enable_categorical=False is not a shap workaround - it states the input
+    # contract build_xy already enforces. Check the three together (review 3).
+    feat = _features(60, seed=25)
+    raw = _raw_with_signal(feat, seed=25)
+    x, y = build_xy(feat, raw)
+    model = make_xgboost(y, RANDOM_SEED)
+    assert model.get_params()["enable_categorical"] is False
+    assert all(pd.api.types.is_numeric_dtype(x[c]) for c in x.columns)
+    model.fit(x, y)
+    assert "c" not in (model.get_booster().feature_types or [])

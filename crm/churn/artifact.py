@@ -60,7 +60,7 @@ from typing import Any, Iterable, Sequence
 import joblib
 import pandas as pd
 
-from crm.churn.model import PREDICTOR_COLUMNS
+from crm.churn.model import ALL_PREDICTOR_COLUMNS
 from crm.common.atomic import write_with_meta
 from crm.common.freshness import file_sha256, sha256_bytes
 
@@ -75,6 +75,7 @@ __all__ = [
     "read_verified_model_meta",
     "verify_artifact_identity",
     "identity_is_consistent",
+    "outputs_share_identity",
 ]
 
 _LOG = logging.getLogger(__name__)
@@ -173,7 +174,7 @@ def save_model_with_identity(
     inputs: Iterable[Path],
     seed: int,
     metrics: dict[str, float],
-    features: Sequence[str] = PREDICTOR_COLUMNS,
+    features: Sequence[str] = ALL_PREDICTOR_COLUMNS,
 ) -> str:
     """Write the model and its AD-5 identity record as one unit; return the id.
 
@@ -250,6 +251,19 @@ def verify_artifact_identity(expected: str, actual: str, *, context: str) -> Non
             f"{context} says '{actual}' - they describe DIFFERENT model content; "
             f"rerun 03_train_churn"
         )
+
+
+def outputs_share_identity(model_path: Path, *derived_paths: Path) -> bool:
+    """True only if EVERY derived output carries the on-disk model's identity.
+
+    Story 1-7 adds a third output (SHAP values) that must be bound to the same
+    training run as the scores. Checking them one at a time in the stage would
+    put branching logic where the shape guard forbids it, and checking only the
+    first would let a stale SHAP frame survive a rerun.
+    """
+    if not derived_paths:
+        raise ValueError("pass at least one derived output to check")
+    return all(identity_is_consistent(model_path, path) for path in derived_paths)
 
 
 def identity_is_consistent(model_path: Path, scored_path: Path) -> bool:

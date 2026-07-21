@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-21 (1-6b done; AD-5 artifact_id 정체성; 외부리뷰 2라운드; 242 passed)
+# last_updated: 2026-07-21 (1-7 review; 예측자 9개 확장 + SHAP 요인/액션; 267 passed)
 # project: crm-targeting-lab
 # project_key: NOKEY
 # tracking_system: file-system
@@ -78,6 +78,11 @@
 # - 1-6 is the largest remaining story (baseline + XGBoost + artifact/meta + label
 #   wording). If dev context runs short, split into 1-6a (baseline + XGBoost + lift)
 #   and 1-6b (artifact identity + meta.json) and update this file accordingly.
+# - 1-7 SCOPE EXPANSION (decided 2026-07-21): 예측자 3개(RFM 프록시)로는 CAP-3(요인 top5 -> 액션)이
+#   성립하지 않음이 실증됨 - "거래가 줄어서 이탈 위험"은 순환논법이고 SPEC이 예시로 든 "한도 불만형"을
+#   판별할 피처가 X에 없다. 1-7이 raw 프레임 경유로 이탈 신호 7컬럼을 예측자에 추가한다(총 10개).
+#   features_customers는 불변이라 1-4 세그먼트/1-5 페르소나 회귀 0, 바뀌는 것은 이탈 모델 지표와
+#   artifact_id뿐(1-6a 리포트 갱신 필요). 컨텍스트 부족 시 1-7a(피처확장+재산출)/1-7b(SHAP+액션) 분할 사전승인.
 # - Epic DoD (all epics): real-data run + honesty (state shortfalls) + 3-layer code
 #   review + per-story commit + Obsidian mirror.
 
@@ -101,7 +106,7 @@ development_status:
   # identity(AD-5 meta.json/artifact_id) that 1-7 depends on.
   1-6a-churn-model-baseline-lift: done
   1-6b-artifact-identity-meta: done
-  1-7-shap-drivers-retention-actions: backlog
+  1-7-shap-drivers-retention-actions: review
   epic-1-retrospective: optional
 
   epic-2: backlog

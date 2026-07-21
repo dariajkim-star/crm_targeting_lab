@@ -40,6 +40,8 @@ from crm.config import CHURN_CV_FOLDS, CHURN_TREE_METHOD, RANDOM_SEED
 
 __all__ = [
     "PREDICTOR_COLUMNS",
+    "RAW_PREDICTOR_COLUMNS",
+    "ALL_PREDICTOR_COLUMNS",
     "build_xy",
     "make_baseline",
     "make_xgboost",
@@ -60,9 +62,61 @@ _POSITIVE_LABEL = "Attrited Customer"
 # to 0). Failing beats silently corrupting the training population.
 _ALLOWED_LABELS = frozenset({"Attrited Customer", "Existing Customer"})
 
-# Continuous RFM proxies only. The R/F/M SCORES and segment_id are quantised or
-# derived from these three, so including them adds redundancy, not signal.
+# Continuous RFM proxies from the FEATURE table. The R/F/M SCORES and segment_id
+# are quantised or derived from these three, so including them adds redundancy.
 PREDICTOR_COLUMNS = ("recency_proxy", "frequency_proxy", "monetary_proxy")
+
+# Churn-signal predictors taken from the RAW frame (story 1-7).
+#
+# WHY THESE EXIST. Story 1-6a trained on the three RFM proxies alone, because it
+# reused the table built for SEGMENTATION (CAP-1). That is inherited, not
+# designed: an explanation built on those three can only ever say "spend fell,
+# so churn risk is high", which restates the definition instead of naming a
+# cause an operator can act on. CAP-3 asks for drivers that translate into
+# retention actions, and that needs signals the RFM axes do not carry.
+#
+# WHY FROM THE RAW FRAME. ``build_xy`` already receives it (for the label), so
+# widening X here leaves ``features_customers`` untouched - which means the
+# 1-4 K-means segments and the 1-5 personas built on them do NOT move. Adding
+# these columns to the feature table instead would change the clustering input
+# and silently renumber every segment.
+#
+# WHY Avg_Utilization_Ratio IS ALLOWED HERE. SPEC CAP-5 bars it from the
+# customer VALUE axis - it is a profiling-only reference indicator, never summed
+# into value - and CAP-5 was amended (2026-07-21) to state explicitly that use
+# as a churn-risk PREDICTOR is a separate question that the value ban does not
+# cover. It must never be read back as a value signal, and never as causal
+# evidence for an action.
+#
+# NOT INCLUDED, deliberately:
+#   - Months_Inactive_12_mon: recency_proxy IS this column verbatim (story 1-3
+#     defines the recency proxy as Months_Inactive_12_mon unchanged) - measured
+#     2026-07-21: byte-identical per customer, and with both present XGBoost
+#     used one and SHAP-zeroed the other, which would read as "inactivity does
+#     not matter" in the driver tables. Exact duplicates explain nothing.
+#   - Credit_Limit: ABLATION-TESTED and dropped (2026-07-21). Including it moved
+#     XGBoost PR-AUC by +0.005 (0.9508 -> 0.9559), ranked it LAST of nine drivers
+#     (mean |SHAP| 0.287) and put it in one segment's top-5 out of four. The
+#     limit-frustration persona SPEC CAP-3 imagines is not in this data either
+#     (utilisation correlates NEGATIVELY with risk). A column that buys 0.005 and
+#     invites a value-axis argument is not worth carrying.
+#   - Avg_Open_To_Buy (= Credit_Limit - Total_Revolving_Bal, fully redundant).
+#   - The five categorical columns (Gender / Education_Level / Income_Category /
+#     Marital_Status / Card_Category) - those need the fixed lexicographic
+#     encoding AD-7 mandates, and a demographic driver does not translate into a
+#     retention action ("being 30 is why they churn" buys nothing).
+# See deferred-work.md.
+RAW_PREDICTOR_COLUMNS = (
+    "Total_Relationship_Count",
+    "Contacts_Count_12_mon",
+    "Total_Amt_Chng_Q4_Q1",
+    "Total_Ct_Chng_Q4_Q1",
+    "Avg_Utilization_Ratio",
+)
+
+# The full predictor set, in a FIXED order (AD-7: column order must not depend on
+# dict iteration or merge order, or SHAP columns shuffle between runs).
+ALL_PREDICTOR_COLUMNS = PREDICTOR_COLUMNS + RAW_PREDICTOR_COLUMNS
 
 # Never allowed into X: the target itself and the target-correlated leakage pair.
 _LEAKAGE_PREFIX = "Naive_Bayes_Classifier_"
@@ -77,7 +131,7 @@ def build_xy(features: pd.DataFrame, raw: pd.DataFrame) -> tuple[pd.DataFrame, p
     """
     for frame, name, needed in (
         (features, "features", (_ID_COLUMN, *PREDICTOR_COLUMNS)),
-        (raw, "raw", (_ID_COLUMN, _LABEL_COLUMN)),
+        (raw, "raw", (_ID_COLUMN, _LABEL_COLUMN, *RAW_PREDICTOR_COLUMNS)),
     ):
         missing = [c for c in needed if c not in frame.columns]
         if missing:
@@ -100,8 +154,13 @@ def build_xy(features: pd.DataFrame, raw: pd.DataFrame) -> tuple[pd.DataFrame, p
             f"{len(feature_ids - raw_ids)} lack labels. Reconcile upstream."
         )
 
+    # Explicit column WHITELIST on both sides. Now that predictors come from the
+    # raw frame too, a wildcard/"everything else" selection would eventually drag
+    # the target or the Naive_Bayes_* pair into X - the exact leak this project
+    # was warned about. Name every column that is allowed through.
     merged = features[[_ID_COLUMN, *PREDICTOR_COLUMNS]].merge(
-        raw[[_ID_COLUMN, _LABEL_COLUMN]], on=_ID_COLUMN, how="inner", validate="one_to_one"
+        raw[[_ID_COLUMN, _LABEL_COLUMN, *RAW_PREDICTOR_COLUMNS]],
+        on=_ID_COLUMN, how="inner", validate="one_to_one",
     )
     # Canonical row order (review Med-7): StratifiedKFold splits by POSITION, so
     # without a fixed order the same customers land in different folds when the
@@ -116,19 +175,21 @@ def build_xy(features: pd.DataFrame, raw: pd.DataFrame) -> tuple[pd.DataFrame, p
     if unknown:
         raise ValueError(f"unexpected {_LABEL_COLUMN} values: {sorted(unknown)}")
 
-    # Defensive leakage re-audit (sprint-status warning): the target and the
-    # Naive_Bayes_* columns must never reach X. They are not in PREDICTOR_COLUMNS,
-    # but assert it so a future edit cannot smuggle one in.
-    leaks = [c for c in PREDICTOR_COLUMNS if c == _LABEL_COLUMN or c.startswith(_LEAKAGE_PREFIX)]
+    # Defensive leakage re-audit (sprint-status warning). Since 1-7 pulls
+    # predictors OUT OF THE RAW FRAME, this assertion stopped being theoretical:
+    # the target and the Naive_Bayes_* pair (correlated +/-1.0 with it) live in
+    # that same frame, one typo away from X.
+    leaks = [c for c in ALL_PREDICTOR_COLUMNS
+             if c == _LABEL_COLUMN or c.startswith(_LEAKAGE_PREFIX)]
     if leaks:
         raise ValueError(f"predictor set contains target/leakage columns: {leaks}")
 
-    x = merged[list(PREDICTOR_COLUMNS)].set_axis(merged[_ID_COLUMN], axis=0)
+    x = merged[list(ALL_PREDICTOR_COLUMNS)].set_axis(merged[_ID_COLUMN], axis=0)
     # Predictors must be finite numerics for BOTH models (review Low-10): XGBoost
     # tolerates NaN but the logistic baseline does not, and a cryptic sklearn
     # error far from here would hide the real data defect.
-    if not all(pd.api.types.is_numeric_dtype(x[c]) for c in PREDICTOR_COLUMNS):
-        raise TypeError(f"predictors must be numeric: {list(PREDICTOR_COLUMNS)}")
+    if not all(pd.api.types.is_numeric_dtype(x[c]) for c in ALL_PREDICTOR_COLUMNS):
+        raise TypeError(f"predictors must be numeric: {list(ALL_PREDICTOR_COLUMNS)}")
     if not np.isfinite(x.to_numpy(dtype=float)).all():
         raise ValueError("predictors contain NaN/inf - clean upstream before training")
     y = merged[_LABEL_COLUMN].eq(_POSITIVE_LABEL).astype(int).set_axis(merged[_ID_COLUMN], axis=0)
@@ -156,6 +217,14 @@ def make_xgboost(y: pd.Series, seed: int = RANDOM_SEED) -> XGBClassifier:
 
     ``scale_pos_weight`` = negatives / positives balances the loss; ``n_jobs=1``
     and a fixed ``tree_method`` keep the floating-point reduction order stable.
+
+    ``enable_categorical=False`` is explicit rather than incidental (story 1-7):
+    X is all-numeric by contract (``build_xy`` rejects anything else), and
+    xgboost 3.3 leaves the flag ON by default - which makes shap 0.52 refuse the
+    interventional TreeExplainer outright ("Categorical split is not yet
+    supported"), whether or not a categorical feature exists. Turning it off
+    states the truth about X and is what lets SHAP use a background sample.
+    Measured: predictions are bit-identical with the flag off.
     """
     positives = int(y.sum())
     negatives = int(len(y) - positives)
@@ -172,6 +241,7 @@ def make_xgboost(y: pd.Series, seed: int = RANDOM_SEED) -> XGBClassifier:
         random_state=seed,
         n_jobs=1,
         tree_method=CHURN_TREE_METHOD,
+        enable_categorical=False,
         eval_metric="aucpr",
     )
 
@@ -259,6 +329,9 @@ class ChurnResult:
 
     model: XGBClassifier
     scored: pd.DataFrame  # CLIENTNUM + churn_prob
+    x: pd.DataFrame  # the predictors the model was fit on, CLIENTNUM-indexed:
+    # SHAP must explain THESE rows in THIS order, and rebuilding them in the
+    # stage would risk explaining a differently-assembled X than was scored.
     baseline_pr_auc: float
     xgboost_pr_auc: float
     pr_auc_lift: float
@@ -294,6 +367,7 @@ def fit_and_compare(features: pd.DataFrame, raw: pd.DataFrame, seed: int = RANDO
     return ChurnResult(
         model=model,
         scored=scored,
+        x=x,
         baseline_pr_auc=baseline_auc,
         xgboost_pr_auc=xgb_auc,
         pr_auc_lift=lift(baseline_auc, xgb_auc),

@@ -3,6 +3,12 @@
 BankChurners 고객의 **이탈 위험을 cross-sectional로 분류**하는 baseline 로지스틱 vs XGBoost 비교.
 수치는 실데이터(n=10,127)로 산출했다. 라이브러리: scikit-learn 1.9.0, xgboost 3.3.0.
 
+> **⚠️ 1-7에서 예측자가 확장됐다(2026-07-21).** 1-6a는 RFM 프록시 **3개**로 학습했고, 1-7이 이탈 신호
+> **5개**를 raw 프레임에서 추가해 **8개**로 재학습했다(CAP-3 요인 해석이 3피처로는 순환논법이 되기 때문;
+> `Credit_Limit`은 외부 리뷰 권고에 따른 ablation에서 기여 미미 — PR-AUC +0.005·전역 9/9위 — 로 제외).
+> 아래 표는 **3피처(1-6a) / 8피처(1-7) 전후를 병기**한다. 옛 수치를 지우지 않는 이유는 리프트가 어떻게
+> 움직였는지가 그 자체로 발견이기 때문이다.
+
 ## 라벨 성격 — cross-sectional 분류 (AD-6/NFR2)
 
 `Attrition_Flag`는 **사후 단면(snapshot) 라벨**이다. 이 모델은 **"이탈 위험 분류(cross-sectional)"**이지
@@ -11,8 +17,12 @@ BankChurners 고객의 **이탈 위험을 cross-sectional로 분류**하는 base
 
 ## 데이터·설정
 
-- **예측자(X)**: features_customers의 연속 RFM 프록시 3개 — `recency_proxy`·`frequency_proxy`·`monetary_proxy`.
-  점수(R/F/M)·`segment_id`는 파생/양자화라 제외(중복 회피).
+- **예측자(X) — 8개**(1-7 확장): features 유래 3개(`recency_proxy`·`frequency_proxy`·`monetary_proxy`)
+  + raw 유래 5개(`Total_Relationship_Count`·`Contacts_Count_12_mon`·`Total_Amt_Chng_Q4_Q1`·
+  `Total_Ct_Chng_Q4_Q1`·`Avg_Utilization_Ratio`). `Credit_Limit`은 ablation(리뷰 권고) 결과 제외. 점수(R/F/M)·`segment_id`는 파생/양자화라 제외.
+  `Months_Inactive_12_mon`은 `recency_proxy`와 **값이 동일**해 제외(중복 투입 시 한쪽 SHAP이 0이 되어
+  "비활성은 무관"이라는 거짓 해석을 만든다 — 실측 확인). **확장은 raw 경유라 `features_customers`는 불변**이며
+  1-4 세그먼트·1-5 페르소나는 회귀 0이다.
 - **라벨(y)**: `Attrition_Flag == "Attrited Customer"`(1), 그 외 0. **X와 엄격 분리**(라벨을 피처에 섞지 않음).
 - **누수 재감사(sprint-status 경고)**: `Naive_Bayes_Classifier_*` 2컬럼(타깃 상관 ±1.0)은 X에 없음.
   `Attrition_Flag`도 X에 없음. `build_xy`가 방어적으로 단언(테스트 고정). → AUC=1.0 무의미 누수 차단.
@@ -30,31 +40,35 @@ BankChurners 고객의 **이탈 위험을 cross-sectional로 분류**하는 base
 불균형(16%)이라 **PR-AUC(average precision)를 주지표**로 삼는다. ROC-AUC는 기저율만 겨우 넘는 모델도
 후하게 평가한다. 5-fold 교차검증 평균:
 
-| 모델 | PR-AUC (5-fold CV) |
-|---|---|
-| 무작위 기준선(=양성 비율) | 0.1607 |
-| baseline 로지스틱(StandardScaler + class_weight=balanced) | 0.4297 |
-| **XGBoost** | **0.8024** |
+| 모델 | PR-AUC — 3피처(1-6a) | PR-AUC — 8피처(1-7) |
+|---|---|---|
+| 무작위 기준선(=양성 비율) | 0.1607 | 0.1607 |
+| baseline 로지스틱(StandardScaler + class_weight=balanced) | 0.4297 | **0.6751** |
+| **XGBoost** | **0.8024** | **0.9508** |
+| **리프트(FR5)** | **+86.7%** | **+40.8%** |
 
-**baseline 대비 XGBoost PR-AUC 리프트 = +86.7%** (FR5).
+**리프트가 +86.7% → +40.8%로 떨어졌는데, 모델은 좋아졌다.** 두 모델이 같은 피처를 받으므로 baseline도
+함께 강해졌고(0.4297 → 0.6751), 리프트는 **XGBoost의 품질이 아니라 baseline 대비 상대 우위**를 재는
+값이기 때문이다. 절대 성능은 0.8024 → 0.9508로 올랐다. +15% 목표는 **판정이 아니라 서술**이며(AC2),
+두 구성 모두 상회한다.
 
 ### +15% 목표 대비 (AC2 정직성)
 
-목표 +15%를 **크게 상회(+86.7%)한다.** 이는 실패 조항의 반대 경우지만, 정직하게 맥락을 밝힌다:
-얇은 RFM 피처셋임에도 성능이 높은 이유는 **`frequency_proxy`(연간 거래 건수, `Total_Trans_Ct`)가
-이 데이터셋에서 이탈과 강하게 연관**되기 때문이다(이탈 고객은 거래가 급감). **우위의 원인은 확정하지
-않는다**(리뷰 반영): 스케일링 부재 탓이 아님은 실증했으나(위), 비선형/상호작용 기여를 분리하는
-ablation은 수행하지 않았다 — "비선형 포착 덕분"은 가설이지 증명된 주장이 아니다.
+목표 +15%를 두 구성 모두 상회한다(3피처 +86.7% / 8피처 +40.8%). 실패 조항의 반대 경우지만 맥락을
+정직하게 밝힌다: 두 구성 모두에서 **`frequency_proxy`(연간 거래 건수)가 가장 강한 신호**이며(1-7 SHAP
+전역 1위, 평균 |SHAP| 2.87), 이탈 고객은 거래가 급감한다. **우위의 원인은 확정하지 않는다**(리뷰 반영):
+스케일링 부재 탓이 아님은 실증했으나, 비선형/상호작용 기여를 분리하는 ablation은 수행하지 않았다.
 
-> **주의(정직성)**: 이 리프트는 **모델 품질의 상한이 아니다.** 피처가 3개뿐이고 라벨이 단면적이므로,
-> 여기 수치를 "이탈을 몇 % 맞춘다"는 운영 성능으로 과대 해석하지 말 것. 이는 **baseline 대비 상대
-> 비교**이자 타겟팅 프레임(3-x)의 입력일 뿐이다.
+> **주의(정직성)**: 이 리프트는 **모델 품질의 상한이 아니다.** 라벨이 단면적이고 피처가 8개로 제한되므로,
+> 여기 수치를 "이탈을 몇 % 맞춘다"는 운영 성능으로 과대 해석하지 말 것. 특히 **8피처 PR-AUC 0.9508은
+> in-sample CV 값**이며, 실제 운영 성능이 아니다. 이는 **baseline 대비 상대 비교**이자 타겟팅
+> 프레임(3-x)의 입력일 뿐이다.
 
 ### `churn_prob`는 미보정 in-sample 점수다 (리뷰 반영, 정직성)
 
 최종 모델은 전체 고객으로 학습한 뒤 **같은 고객을 채점**하므로 `churn_prob`는 out-of-fold가 아닌
-**in-sample 점수**이고, `scale_pos_weight` 재가중 때문에 **보정된 확률이 아니다**(실측: 평균
-churn_prob 0.260 vs 실제 이탈률 0.161). 컬럼명은 스파인(AD-5)이 고정한 것이라 유지하되, **순위
+**in-sample 점수**이고, `scale_pos_weight` 재가중 때문에 **보정된 확률이 아니다**(8피처 실측: 평균
+churn_prob 0.195 vs 실제 이탈률 0.161 — 3피처 때의 0.260보다 가까워졌으나 여전히 보정된 값이 아니다). 컬럼명은 스파인(AD-5)이 고정한 것이라 유지하되, **순위
 신호(누가 더 위험한가)로만 사용**할 것. calibration은 평가하지 않았다. 아래 세그먼트 평균 비교도
 방향 정합의 참고일 뿐 **독립 검증·calibration 증거가 아니다**.
 
@@ -62,12 +76,12 @@ churn_prob 0.260 vs 실제 이탈률 0.161). 컬럼명은 스파인(AD-5)이 고
 
 산출된 `churn_prob`의 **세그먼트별 평균**은 1-5의 세그먼트별 실제 이탈률과 정합한다:
 
-| segment_id | 평균 churn_prob | 1-5 실제 이탈률 |
-|---|---|---|
-| 1 (최고가치) | 0.002 | 0.0% |
-| 2 | 0.070 | 4.0% |
-| 3 | 0.175 | 11.6% |
-| 4 (저활동) | 0.590 | 36.1% |
+| segment_id | 평균 churn_prob (3피처) | 평균 churn_prob (8피처) | 1-5 실제 이탈률 |
+|---|---|---|---|
+| 1 (최고가치) | 0.002 | 0.003 | 0.0% |
+| 2 | 0.070 | 0.055 | 4.0% |
+| 3 | 0.175 | 0.138 | 11.6% |
+| 4 (저활동) | 0.590 | 0.432 | 36.1% |
 
 모델의 위험 점수가 세그먼트 가치 계층·실제 이탈과 같은 방향으로 정렬된다(파이프라인 전체 일관성).
 
@@ -76,6 +90,8 @@ churn_prob 0.260 vs 실제 이탈률 0.161). 컬럼명은 스파인(AD-5)이 고
 - `models/churn_model.joblib` — 학습된 XGBoost(원자적 저장). gitignore.
 - `models/churn_model.meta.json` — **AD-5 정체성 기록(1-6b에서 추가)**. gitignore.
 - `data/churn_scored.parquet` — `CLIENTNUM` + `churn_prob` + **`artifact_id`**(+ AD-13 신선도 meta).
+- `data/churn_shap.parquet` — **1-7 추가**. `CLIENTNUM` + 예측자 8개의 SHAP 값 + `artifact_id`(+ AD-13 meta).
+  요인 해석은 [churn-drivers-actions-1-7.md](churn-drivers-actions-1-7.md).
 
 ## 아티팩트 정체성 (AD-5, 1-6b에서 확립)
 
@@ -84,19 +100,21 @@ churn_prob 0.260 vs 실제 이탈률 0.161). 컬럼명은 스파인(AD-5)이 고
 
 ```json
 {
-  "artifact_id": "2f7f09ec0703de6b3057b2fa2ab6d9922d41597adc166da05d7c4334a742851d",
-  "trained_at": "2026-07-21T06:36:43.389432+00:00",
+  "artifact_id": "c751c63d5b58...",
+  "trained_at": "2026-07-21T...(재산출)",
   "random_seed": 42,
   "inputs": { "features_customers.parquet": "540dba50...", "bankchurners.parquet": "2b48a9f6..." },
-  "features": ["recency_proxy", "frequency_proxy", "monetary_proxy"],
+  "features": ["recency_proxy", "frequency_proxy", "monetary_proxy", "Total_Relationship_Count",
+               "Contacts_Count_12_mon", "Total_Amt_Chng_Q4_Q1", "Total_Ct_Chng_Q4_Q1",
+               "Avg_Utilization_Ratio"],
   "libraries": { "python": "3.12.10", "xgboost": "3.3.0", "scikit-learn": "1.9.0",
-                 "joblib": "1.5.3", "numpy": "2.5.1", "pandas": "3.0.3" },
-  "metrics": { "baseline_pr_auc": 0.4297395964310179, "xgboost_pr_auc": 0.8023605222603141,
-               "pr_auc_lift": 0.8670853906037713, "positive_rate": 0.1606596227905599, "cv_folds": 5.0 }
+                 "joblib": "1.5.3", "numpy": "2.4.6", "pandas": "3.0.3" },
+  "metrics": { "baseline_pr_auc": 0.6751..., "xgboost_pr_auc": 0.9508...,
+               "pr_auc_lift": 0.4084..., "positive_rate": 0.1606596227905599, "cv_folds": 5.0 }
 }
 ```
 
-`churn_scored.parquet`의 10,127행 전부가 이 `artifact_id` 하나를 보유한다(unique = 1).
+`churn_scored.parquet`·`churn_shap.parquet`의 10,127행 전부가 이 `artifact_id` 하나를 보유한다(unique = 1).
 검증은 세 가지가 모두 일치할 때만 통과한다: **디스크의 모델 바이트** · **meta 기록** · **점수에 찍힌 id**.
 
 **정직한 표현 (외부 리뷰 반영)**:
@@ -115,7 +133,8 @@ churn_prob 0.260 vs 실제 이탈률 0.161). 컬럼명은 스파인(AD-5)이 고
 
 ## 다음 스토리 인계
 
-- **1-7 (SHAP)**: 동일 아티팩트에서 SHAP을 `03_train_churn` 단계에서만 산출하고, `read_model_meta` +
-  `verify_artifact_identity`(1-6b 제공)로 `churn_prob`↔SHAP 동일 출처를 검증한다.
-- **4-1/4-x (마트)**: `05_marts`가 입력 `artifact_id` 불일치 시 즉시 실패 — 같은 두 함수를 재사용한다.
-- **범위 밖**: 피처 확장(모델 성능을 높이려면 02_features에 신호 추가 — 별도 스토리), 관측/예측창(AD-6 금지).
+- ~~**1-7 (SHAP)**~~ — **완료(2026-07-21)**: SHAP을 `03_train_churn`에서만 산출해 `churn_shap.parquet`으로
+  저장하고, 세 산출물이 동일 `artifact_id`를 보유하도록 결속했다. 예측자도 8개로 확장됐다(위 전후 비교).
+- **4-1/4-x (마트)**: `05_marts`가 입력 `artifact_id` 불일치 시 즉시 실패 — `read_verified_model_meta`·
+  `verify_artifact_identity`·`outputs_share_identity`를 재사용한다.
+- **범위 밖**: 범주형 피처 인코딩(AD-7 사전순 매핑 설계 필요 — deferred-work), 관측/예측창(AD-6 금지).

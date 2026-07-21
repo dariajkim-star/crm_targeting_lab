@@ -60,6 +60,15 @@ CHURN_CV_FOLDS: int = 5  # source: 규약 (standard 5-fold)
 # reproducible when n_jobs=1 and random_state are also fixed. Not a data value.
 CHURN_TREE_METHOD: str = "hist"  # source: 규약 (deterministic with n_jobs=1)
 
+# --- SHAP explanation conventions (story 1-7) --------------------------------
+# Background sample size for the interventional TreeExplainer. A cost/precision
+# convention, NOT a value read off the data: the explainer is O(background x
+# rows), and a few hundred reference rows settle the driver RANKING this project
+# reports. Sampled with RANDOM_SEED (AD-7).
+SHAP_BACKGROUND_SIZE: int = 200  # source: 규약 (cost/precision trade-off)
+# How many drivers a per-segment table reports. The epic asks for top5.
+DRIVER_TOP_N: int = 5  # source: 규약 (epic 1.7 AC: 요인 top5)
+
 # --- Campaign policy assumptions (NFR1: assumptions, not measurements) -------
 # These are NOT estimated from data. They are stated assumptions, and every
 # artifact that uses them must label them as such. Robustness is CAP-7's job

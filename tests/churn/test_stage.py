@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from crm.churn.artifact import artifact_id, model_meta_path, serialize_model
-from crm.churn.model import fit_and_compare
+from crm.churn.model import ALL_PREDICTOR_COLUMNS, fit_and_compare
 from crm.common.freshness import build_meta
 
 
@@ -34,12 +34,19 @@ def _seed_inputs(tmp_path: Path, n: int = 120) -> tuple[Path, Path]:
         "recency_proxy": rng.integers(0, 6, n),
         "frequency_proxy": rng.integers(10, 140, n),
         "monetary_proxy": rng.uniform(500, 18000, n),
+        "segment_id": rng.integers(1, 5, n),
     })
     p_attr = 1 / (1 + np.exp((feat["frequency_proxy"].to_numpy() - 60) / 15))
+    attr = rng.random(n) < p_attr
     raw = pd.DataFrame({
         "CLIENTNUM": feat["CLIENTNUM"].to_numpy(),
-        "Attrition_Flag": np.where(rng.random(n) < p_attr,
-                                   "Attrited Customer", "Existing Customer"),
+        "Attrition_Flag": np.where(attr, "Attrited Customer", "Existing Customer"),
+        "Total_Relationship_Count": rng.integers(1, 7, n),
+        "Months_Inactive_12_mon": np.where(attr, rng.integers(2, 7, n), rng.integers(0, 4, n)),
+        "Contacts_Count_12_mon": rng.integers(0, 7, n),
+        "Total_Amt_Chng_Q4_Q1": rng.uniform(0.2, 2.0, n),
+        "Total_Ct_Chng_Q4_Q1": rng.uniform(0.2, 2.0, n),
+        "Avg_Utilization_Ratio": rng.uniform(0.0, 1.0, n),
     })
     feat_p = tmp_path / "features_customers.parquet"
     raw_p = tmp_path / "bankchurners.parquet"
@@ -60,12 +67,13 @@ def test_deleted_model_forces_a_rerun(tmp_path):
     feat_p, raw_p = _seed_inputs(tmp_path)
     model_p = tmp_path / "churn_model.joblib"
     scored_p = tmp_path / "churn_scored.parquet"
+    shap_p = tmp_path / "churn_shap.parquet"
 
-    stage.main([feat_p, raw_p], [model_p, scored_p])
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
     assert model_p.exists() and scored_p.exists()
 
     model_p.unlink()  # lose the sibling artifact
-    stage.main([feat_p, raw_p], [model_p, scored_p])
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
     assert model_p.exists(), "stage skipped as fresh with the model missing"
 
 
@@ -75,8 +83,9 @@ def test_stage_stamps_the_model_identity_onto_every_scored_row(tmp_path):
     feat_p, raw_p = _seed_inputs(tmp_path)
     model_p = tmp_path / "churn_model.joblib"
     scored_p = tmp_path / "churn_scored.parquet"
+    shap_p = tmp_path / "churn_shap.parquet"
 
-    stage.main([feat_p, raw_p], [model_p, scored_p])
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
 
     meta = json.loads(model_meta_path(model_p).read_text(encoding="utf-8"))
     scored = pd.read_parquet(scored_p)
@@ -94,13 +103,14 @@ def test_tampered_scored_identity_forces_a_rerun(tmp_path):
     feat_p, raw_p = _seed_inputs(tmp_path)
     model_p = tmp_path / "churn_model.joblib"
     scored_p = tmp_path / "churn_scored.parquet"
-    stage.main([feat_p, raw_p], [model_p, scored_p])
+    shap_p = tmp_path / "churn_shap.parquet"
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
 
     scored = pd.read_parquet(scored_p)
     scored["artifact_id"] = "0" * 64
     scored.to_parquet(scored_p, index=False)
 
-    stage.main([feat_p, raw_p], [model_p, scored_p])
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
 
     restored = pd.read_parquet(scored_p)["artifact_id"].unique().tolist()
     assert restored == [artifact_id(model_p.read_bytes())], "stage skipped a mismatched pair"
@@ -111,10 +121,11 @@ def test_deleted_identity_record_forces_a_rerun(tmp_path):
     feat_p, raw_p = _seed_inputs(tmp_path)
     model_p = tmp_path / "churn_model.joblib"
     scored_p = tmp_path / "churn_scored.parquet"
-    stage.main([feat_p, raw_p], [model_p, scored_p])
+    shap_p = tmp_path / "churn_shap.parquet"
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
 
     model_meta_path(model_p).unlink()
-    stage.main([feat_p, raw_p], [model_p, scored_p])
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
 
     assert model_meta_path(model_p).exists(), "stage skipped with no AD-5 record"
 
@@ -127,14 +138,15 @@ def test_replaced_model_bytes_force_a_rerun(tmp_path):
     feat_p, raw_p = _seed_inputs(tmp_path)
     model_p = tmp_path / "churn_model.joblib"
     scored_p = tmp_path / "churn_scored.parquet"
-    stage.main([feat_p, raw_p], [model_p, scored_p])
+    shap_p = tmp_path / "churn_shap.parquet"
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
     original = artifact_id(model_p.read_bytes())
 
     other = fit_and_compare(pd.read_parquet(feat_p), pd.read_parquet(raw_p), seed=7).model
     model_p.write_bytes(serialize_model(other))
     assert artifact_id(model_p.read_bytes()) != original
 
-    stage.main([feat_p, raw_p], [model_p, scored_p])
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
 
     restored = artifact_id(model_p.read_bytes())
     meta = json.loads(model_meta_path(model_p).read_text(encoding="utf-8"))
@@ -151,9 +163,10 @@ def test_stage_records_the_seed_it_actually_trained_with(tmp_path, monkeypatch):
     feat_p, raw_p = _seed_inputs(tmp_path)
     model_p = tmp_path / "churn_model.joblib"
     scored_p = tmp_path / "churn_scored.parquet"
+    shap_p = tmp_path / "churn_shap.parquet"
     monkeypatch.setattr(stage.config, "RANDOM_SEED", 7)
 
-    stage.main([feat_p, raw_p], [model_p, scored_p])
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
 
     meta = json.loads(model_meta_path(model_p).read_text(encoding="utf-8"))
     trained_with_7 = fit_and_compare(pd.read_parquet(feat_p), pd.read_parquet(raw_p), seed=7).model
@@ -168,10 +181,11 @@ def test_stage_skips_a_consistent_pair(tmp_path):
     feat_p, raw_p = _seed_inputs(tmp_path)
     model_p = tmp_path / "churn_model.joblib"
     scored_p = tmp_path / "churn_scored.parquet"
-    stage.main([feat_p, raw_p], [model_p, scored_p])
+    shap_p = tmp_path / "churn_shap.parquet"
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
     trained_at = json.loads(model_meta_path(model_p).read_text(encoding="utf-8"))["trained_at"]
 
-    stage.main([feat_p, raw_p], [model_p, scored_p])
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
 
     assert json.loads(model_meta_path(model_p).read_text(encoding="utf-8"))["trained_at"] == trained_at
 
@@ -181,10 +195,77 @@ def test_stage_output_is_deterministic_across_two_runs(tmp_path):
     # test). Two independent output paths, identical churn_prob.
     stage = _load_stage_03()
     feat_p, raw_p = _seed_inputs(tmp_path)
-    out_a = (tmp_path / "a_model.joblib", tmp_path / "a_scored.parquet")
-    out_b = (tmp_path / "b_model.joblib", tmp_path / "b_scored.parquet")
+    out_a = (tmp_path / "a_model.joblib", tmp_path / "a_scored.parquet", tmp_path / "a_shap.parquet")
+    out_b = (tmp_path / "b_model.joblib", tmp_path / "b_scored.parquet", tmp_path / "b_shap.parquet")
     stage.main([feat_p, raw_p], list(out_a))
     stage.main([feat_p, raw_p], list(out_b))
     a = pd.read_parquet(out_a[1]).sort_values("CLIENTNUM").reset_index(drop=True)
     b = pd.read_parquet(out_b[1]).sort_values("CLIENTNUM").reset_index(drop=True)
     pd.testing.assert_frame_equal(a, b)
+
+
+# --- story 1-7: SHAP output is bound to the same training run ----------------
+
+def test_stage_writes_shap_bound_to_the_same_artifact(tmp_path):
+    # AD-5: churn_prob and its explanation must be provably from one model.
+    stage = _load_stage_03()
+    feat_p, raw_p = _seed_inputs(tmp_path)
+    model_p = tmp_path / "churn_model.joblib"
+    scored_p = tmp_path / "churn_scored.parquet"
+    shap_p = tmp_path / "churn_shap.parquet"
+
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
+
+    aid = artifact_id(model_p.read_bytes())
+    shap_out = pd.read_parquet(shap_p)
+    scored = pd.read_parquet(scored_p)
+    assert shap_out["artifact_id"].unique().tolist() == [aid]
+    assert shap_out["CLIENTNUM"].tolist() == scored["CLIENTNUM"].tolist()
+    assert set(ALL_PREDICTOR_COLUMNS).issubset(shap_out.columns)
+    assert shap_p.with_suffix(shap_p.suffix + ".meta.json").exists()  # AD-13
+
+
+def test_deleted_shap_output_forces_a_rerun(tmp_path):
+    stage = _load_stage_03()
+    feat_p, raw_p = _seed_inputs(tmp_path)
+    model_p = tmp_path / "churn_model.joblib"
+    scored_p = tmp_path / "churn_scored.parquet"
+    shap_p = tmp_path / "churn_shap.parquet"
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
+
+    shap_p.unlink()
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
+
+    assert shap_p.exists(), "stage skipped with the SHAP output missing"
+
+
+def test_tampered_shap_identity_forces_a_rerun(tmp_path):
+    # A stale explanation next to fresh scores is the AD-5 failure mode, just
+    # one output over from the one 1-6b closed.
+    stage = _load_stage_03()
+    feat_p, raw_p = _seed_inputs(tmp_path)
+    model_p = tmp_path / "churn_model.joblib"
+    scored_p = tmp_path / "churn_scored.parquet"
+    shap_p = tmp_path / "churn_shap.parquet"
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
+
+    tampered = pd.read_parquet(shap_p)
+    tampered["artifact_id"] = "0" * 64
+    tampered.to_parquet(shap_p, index=False)
+
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
+
+    assert pd.read_parquet(shap_p)["artifact_id"].unique().tolist() == [
+        artifact_id(model_p.read_bytes())
+    ], "stage skipped a mismatched explanation"
+
+
+def test_shap_values_are_identical_across_two_stage_runs(tmp_path):
+    # AC4 as a stage-level regression, not a function-level one.
+    stage = _load_stage_03()
+    feat_p, raw_p = _seed_inputs(tmp_path)
+    out_a = (tmp_path / "a_model.joblib", tmp_path / "a_scored.parquet", tmp_path / "a_shap.parquet")
+    out_b = (tmp_path / "b_model.joblib", tmp_path / "b_scored.parquet", tmp_path / "b_shap.parquet")
+    stage.main([feat_p, raw_p], list(out_a))
+    stage.main([feat_p, raw_p], list(out_b))
+    pd.testing.assert_frame_equal(pd.read_parquet(out_a[2]), pd.read_parquet(out_b[2]))

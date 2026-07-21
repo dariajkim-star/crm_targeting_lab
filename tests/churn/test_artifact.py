@@ -48,9 +48,17 @@ def _frames(n: int = 200, seed: int = 0) -> tuple[pd.DataFrame, pd.DataFrame]:
         "monetary_proxy": rng.uniform(500, 18000, n),
     })
     p_attr = 1 / (1 + np.exp((features["frequency_proxy"].to_numpy() - 60) / 15))
+    attr = rng.random(n) < p_attr
     raw = pd.DataFrame({
         "CLIENTNUM": features["CLIENTNUM"].to_numpy(),
-        "Attrition_Flag": np.where(rng.random(n) < p_attr, "Attrited Customer", "Existing Customer"),
+        "Attrition_Flag": np.where(attr, "Attrited Customer", "Existing Customer"),
+        # raw-frame predictors (story 1-7)
+        "Total_Relationship_Count": rng.integers(1, 7, n),
+        "Months_Inactive_12_mon": np.where(attr, rng.integers(2, 7, n), rng.integers(0, 4, n)),
+        "Contacts_Count_12_mon": rng.integers(0, 7, n),
+        "Total_Amt_Chng_Q4_Q1": rng.uniform(0.2, 2.0, n),
+        "Total_Ct_Chng_Q4_Q1": rng.uniform(0.2, 2.0, n),
+        "Avg_Utilization_Ratio": rng.uniform(0.0, 1.0, n),
     })
     return features, raw
 
@@ -93,8 +101,16 @@ def test_artifact_id_is_stable_across_processes(tmp_path):
         "f = pd.DataFrame({'CLIENTNUM': np.arange(n), 'recency_proxy': rng.integers(0,6,n),\n"
         "  'frequency_proxy': rng.integers(10,140,n), 'monetary_proxy': rng.uniform(500,18000,n)})\n"
         "p = 1/(1+np.exp((f['frequency_proxy'].to_numpy()-60)/15))\n"
+        "a = rng.random(n) < p\n"
         "r = pd.DataFrame({'CLIENTNUM': f['CLIENTNUM'].to_numpy(),\n"
-        "  'Attrition_Flag': np.where(rng.random(n) < p, 'Attrited Customer', 'Existing Customer')})\n"
+        "  'Attrition_Flag': np.where(a, 'Attrited Customer', 'Existing Customer'),\n"
+        "  'Total_Relationship_Count': rng.integers(1,7,n),\n"
+        "  'Months_Inactive_12_mon': np.where(a, rng.integers(2,7,n), rng.integers(0,4,n)),\n"
+        "  'Contacts_Count_12_mon': rng.integers(0,7,n),\n"
+        "  'Total_Amt_Chng_Q4_Q1': rng.uniform(0.2,2.0,n),\n"
+        "  'Total_Ct_Chng_Q4_Q1': rng.uniform(0.2,2.0,n),\n"
+        "  'Avg_Utilization_Ratio': rng.uniform(0.0,1.0,n),\n"
+        "  'Credit_Limit': rng.uniform(1500,34000,n)})\n"
         "print(artifact_id(serialize_model(fit_and_compare(f, r).model)))\n",
         encoding="utf-8",
     )
