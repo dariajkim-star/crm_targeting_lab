@@ -4,22 +4,31 @@ WHAT IDENTITY BUYS (AD-5). ``models/`` is gitignored, so a mismatch between the
 model and the scores derived from it cannot be detected after the fact. Story
 1-6a wrote the model and the scores as two separately-atomic files: a crash
 between them left "new model + old scores" with nothing to notice it. Here each
-scored row carries the model's CONTENT HASH, so a later run - and every consumer
-(1-7 SHAP, the 4-1 mart) - can prove the two came from the SAME training run.
-The crash window still exists; it changes from UNDETECTABLE to SELF-HEALING,
-because an inconsistent pair reads as stale and is recomputed.
+scored row carries the model's CONTENT HASH, so the next stage run - and every
+consumer (1-7 SHAP, the 4-1 mart) - can prove the scores describe the model that
+is actually on disk. The crash window still exists; it changes from UNDETECTABLE
+to DETECTED-AND-RECOMPUTED ON THE NEXT RUN, not repaired at the moment of the
+crash.
 
 ``artifact_id`` IS DEFINED AS the SHA-256 of the serialized model BYTES. Later
 stories must not re-derive it some other way. Consequences, stated plainly:
 
-  - Retraining on the same data with the same seed yields the SAME id. That is
-    intended: identical content is the same artifact. (Measured 2026-07-21:
-    joblib's bytes for this model are stable across processes, so the hash is
-    reproducible - see the story's Debug Log.)
+  - It proves SAME MODEL CONTENT, not same training RUN. Retraining on the same
+    data with the same seed yields the same id, so scores from an earlier
+    identical run also verify. That is the intended reading of AD-5 here -
+    identical content is the same artifact - and it is why nothing in this
+    module claims two files came from one execution. Distinguishing executions
+    would need a separate per-run nonce, which nothing downstream asks for.
+  - Reproducibility is scoped to a FIXED ENVIRONMENT. Measured 2026-07-21 on
+    python 3.12.10 / joblib 1.5.3 / xgboost 3.3.0: the bytes are identical
+    across processes. A different interpreter, pickle protocol, library version
+    or platform may serialise the same model differently and yield a different
+    id. That direction is safe (a new id causes a retrain, never a false match);
+    cross-environment stability would require a canonical XGBoost payload.
   - It does NOT detect input drift. That is AD-13's job (``config_hash`` +
     recorded input hashes), already wired into the stage's freshness gate. The
     two mechanisms answer different questions - AD-13: "must this be
-    recomputed?", AD-5: "did these two outputs come from one run?" - and must
+    recomputed?", AD-5: "do these outputs describe the same model?" - and must
     not be merged.
   - Seed, input hashes, feature list, library versions and metrics are RECORDED
     in the meta record but do NOT feed the hash: if they changed materially the
@@ -40,7 +49,9 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import platform
+import re
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -56,17 +67,21 @@ from crm.common.freshness import file_sha256, sha256_bytes
 __all__ = [
     "ArtifactIdentityError",
     "serialize_model",
-    "save_model",
     "artifact_id",
     "model_meta_path",
     "build_model_meta",
     "save_model_with_identity",
     "read_model_meta",
+    "read_verified_model_meta",
     "verify_artifact_identity",
     "identity_is_consistent",
 ]
 
+_LOG = logging.getLogger(__name__)
 _ID_COLUMN = "artifact_id"
+# An artifact_id is a SHA-256 hex digest and nothing else. Without this a record
+# carrying `42` or a truncated hash would sail through every comparison below.
+_ID_PATTERN = re.compile(r"\A[0-9a-f]{64}\Z")
 # Versions worth recording: everything whose change can move the model bytes.
 _RECORDED_PACKAGES = ("xgboost", "scikit-learn", "joblib", "numpy", "pandas")
 
@@ -176,23 +191,13 @@ def save_model_with_identity(
     return meta["artifact_id"]
 
 
-def save_model(model: Any, path: Path) -> None:
-    """Write model bytes WITHOUT an identity record.
-
-    Retained for callers that only need the bytes. The pipeline uses
-    ``save_model_with_identity`` - an artifact with no identity cannot be bound
-    to the scores derived from it (AD-5).
-    """
-    write_with_meta(path, lambda tmp: tmp.write_bytes(serialize_model(model)), {},
-                    meta_path=model_meta_path(path))
-
-
 def read_model_meta(model_path: Path) -> dict[str, Any]:
     """Load the AD-5 record, failing loudly when it is missing or unusable.
 
     Consumers are entitled to assume a returned record is real; returning None
     or an empty dict here would push the failure downstream to whoever forgets
-    to check.
+    to check. This reads the RECORD only - use ``read_verified_model_meta`` to
+    also prove the record describes the model file that is actually on disk.
     """
     meta_file = model_meta_path(model_path)
     if not meta_file.exists():
@@ -204,39 +209,81 @@ def read_model_meta(model_path: Path) -> dict[str, Any]:
         meta = json.loads(meta_file.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError, OSError) as err:
         raise ArtifactIdentityError(f"unreadable identity record {meta_file.name}: {err}") from err
-    if not isinstance(meta, dict) or not meta.get("artifact_id"):
-        raise ArtifactIdentityError(f"identity record {meta_file.name} carries no artifact_id")
+    if not isinstance(meta, dict):
+        raise ArtifactIdentityError(f"identity record {meta_file.name} is not a JSON object")
+    recorded = meta.get("artifact_id")
+    if not isinstance(recorded, str) or not _ID_PATTERN.match(recorded):
+        raise ArtifactIdentityError(
+            f"identity record {meta_file.name} carries no usable artifact_id "
+            f"(expected a 64-char sha256 hex digest, got {recorded!r})"
+        )
+    return meta
+
+
+def read_verified_model_meta(model_path: Path) -> dict[str, Any]:
+    """Load the AD-5 record AND prove it describes the model file on disk.
+
+    The record alone proves nothing about the artifact: swap the ``.joblib`` for
+    a different (perfectly valid) model and leave the record untouched, and a
+    record-only check still says everything agrees - which is precisely the
+    failure AD-5 exists to prevent. Hashing the file closes that.
+
+    This is the function consumers (1-7 SHAP, the 4-1 mart) must call.
+    """
+    if not model_path.exists():
+        raise ArtifactIdentityError(f"missing model artifact: {model_path} - rerun 03_train_churn")
+    meta = read_model_meta(model_path)
+    verify_artifact_identity(meta["artifact_id"], file_sha256(model_path), context=model_path.name)
     return meta
 
 
 def verify_artifact_identity(expected: str, actual: str, *, context: str) -> None:
-    """Fail immediately when two artifacts claim different training runs (AD-5).
+    """Fail immediately when two ids describe different model content (AD-5).
 
     A warning would be worse than useless here: the whole point is that a
     ``churn_prob`` and an explanation of it must not be presented together
-    unless they came from the same model.
+    unless they describe the same model.
     """
     if expected != actual:
         raise ArtifactIdentityError(
-            f"artifact_id mismatch for {context}: model has '{expected}', "
-            f"{context} has '{actual}' - they came from different training runs; "
+            f"artifact_id mismatch for {context}: the record says '{expected}', "
+            f"{context} says '{actual}' - they describe DIFFERENT model content; "
             f"rerun 03_train_churn"
         )
 
 
 def identity_is_consistent(model_path: Path, scored_path: Path) -> bool:
-    """True only if the scored file provably came from THIS model.
+    """True only if the scored file provably came from the model file on disk.
+
+    Three things must agree: the model BYTES, the identity record, and the id
+    stamped on the scores. Checking only the last two would let a swapped or
+    corrupted ``.joblib`` pass.
 
     Fail-closed: a missing file, an unreadable record, a scored frame with no
     ``artifact_id``, more than one id in it, or a mismatch all read as False -
     the caller reruns. Nothing here raises, because "cannot prove it" and "it is
-    wrong" lead to the same action for a freshness gate.
+    wrong" lead to the same action for a freshness gate. The REASON is logged
+    rather than swallowed: a persistent inconsistency would otherwise show up
+    only as an expensive retrain on every single run, with nothing to say why.
     """
     try:
-        expected = read_model_meta(model_path)["artifact_id"]
-        if not scored_path.exists():
-            return False
-        ids = pd.read_parquet(scored_path, columns=[_ID_COLUMN])[_ID_COLUMN].unique()
-    except (ArtifactIdentityError, OSError, ValueError, KeyError):
+        expected = read_verified_model_meta(model_path)[_ID_COLUMN]
+    except ArtifactIdentityError as err:
+        _LOG.info("identity inconsistent: %s", err)
         return False
-    return len(ids) == 1 and ids[0] == expected
+    if not scored_path.exists():
+        _LOG.info("identity inconsistent: no scored output at %s", scored_path)
+        return False
+    try:
+        ids = pd.read_parquet(scored_path, columns=[_ID_COLUMN])[_ID_COLUMN].unique()
+    except (OSError, ValueError, KeyError) as err:
+        _LOG.info("identity inconsistent: cannot read %s from %s (%s)",
+                  _ID_COLUMN, scored_path.name, err)
+        return False
+    if len(ids) != 1:
+        _LOG.info("identity inconsistent: %s carries %d distinct artifact_ids", scored_path.name, len(ids))
+        return False
+    if ids[0] != expected:
+        _LOG.info("identity inconsistent: scores carry '%s', model is '%s'", ids[0], expected)
+        return False
+    return True

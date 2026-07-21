@@ -14,7 +14,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from crm.churn.artifact import artifact_id, model_meta_path
+from crm.churn.artifact import artifact_id, model_meta_path, serialize_model
+from crm.churn.model import fit_and_compare
 from crm.common.freshness import build_meta
 
 
@@ -116,6 +117,48 @@ def test_deleted_identity_record_forces_a_rerun(tmp_path):
     stage.main([feat_p, raw_p], [model_p, scored_p])
 
     assert model_meta_path(model_p).exists(), "stage skipped with no AD-5 record"
+
+
+def test_replaced_model_bytes_force_a_rerun(tmp_path):
+    # Review High: swap the model for a different valid one and leave the record
+    # and the scores untouched. A record-only gate skips and the pipeline then
+    # explains OLD probabilities with a NEW model.
+    stage = _load_stage_03()
+    feat_p, raw_p = _seed_inputs(tmp_path)
+    model_p = tmp_path / "churn_model.joblib"
+    scored_p = tmp_path / "churn_scored.parquet"
+    stage.main([feat_p, raw_p], [model_p, scored_p])
+    original = artifact_id(model_p.read_bytes())
+
+    other = fit_and_compare(pd.read_parquet(feat_p), pd.read_parquet(raw_p), seed=7).model
+    model_p.write_bytes(serialize_model(other))
+    assert artifact_id(model_p.read_bytes()) != original
+
+    stage.main([feat_p, raw_p], [model_p, scored_p])
+
+    restored = artifact_id(model_p.read_bytes())
+    meta = json.loads(model_meta_path(model_p).read_text(encoding="utf-8"))
+    scored_ids = pd.read_parquet(scored_p)["artifact_id"].unique().tolist()
+    assert restored == original, "stage skipped a swapped model"
+    assert meta["artifact_id"] == restored == scored_ids[0]
+
+
+def test_stage_records_the_seed_it_actually_trained_with(tmp_path, monkeypatch):
+    # Review Med-1: the stage used to record config.RANDOM_SEED while letting
+    # fit_and_compare fall back to its own captured default - a record that can
+    # name a seed the model was never trained with.
+    stage = _load_stage_03()
+    feat_p, raw_p = _seed_inputs(tmp_path)
+    model_p = tmp_path / "churn_model.joblib"
+    scored_p = tmp_path / "churn_scored.parquet"
+    monkeypatch.setattr(stage.config, "RANDOM_SEED", 7)
+
+    stage.main([feat_p, raw_p], [model_p, scored_p])
+
+    meta = json.loads(model_meta_path(model_p).read_text(encoding="utf-8"))
+    trained_with_7 = fit_and_compare(pd.read_parquet(feat_p), pd.read_parquet(raw_p), seed=7).model
+    assert meta["random_seed"] == 7
+    assert artifact_id(model_p.read_bytes()) == artifact_id(serialize_model(trained_with_7))
 
 
 def test_stage_skips_a_consistent_pair(tmp_path):

@@ -279,7 +279,8 @@ metrics 기록: baseline 0.4297 / xgb 0.8024 / lift +86.7% / positive_rate 0.160
 ### File List
 
 - `crm/churn/artifact.py` — UPDATE, `artifact_id`·`model_meta_path`·`library_versions`·`build_model_meta`·
-  `save_model_with_identity`·`read_model_meta`·`verify_artifact_identity`·`identity_is_consistent`·`ArtifactIdentityError`
+  `save_model_with_identity`·`read_model_meta`·**`read_verified_model_meta`**·`verify_artifact_identity`·
+  `identity_is_consistent`·`ArtifactIdentityError`. 리뷰 반영으로 `save_model` 삭제
 - `crm/churn/model.py` — UPDATE, `attach_artifact_id`(순수) + `ChurnResult.metrics()`
 - `crm/common/atomic.py` — UPDATE, `write_with_meta(..., meta_path=None)` 선택 인자(하위호환)
 - `pipelines/03_train_churn.py` — UPDATE, identity 배선 + 게이트 강화(40행 유지)
@@ -290,9 +291,50 @@ metrics 기록: baseline 0.4297 / xgb 0.8024 / lift +86.7% / positive_rate 0.160
 - `docs/implementation-artifacts/1-6b-artifact-identity-meta.md` — UPDATE, 본 기록
 - `docs/implementation-artifacts/sprint-status.yaml` — UPDATE, 상태 전이
 
+## Senior Developer Review (외부 GPT, 2026-07-21)
+
+**판정: Request changes** — High 1, Medium 4, Low 2. **7건 전부 처리**(반려 0).
+설계 방향(콘텐츠 해시·metrics 분리·AD-5/AD-13 분리·fail-closed 게이트)은 통과 확인받음.
+
+### 실증 확인 (패치 전, `scratch/repro_1_6b.py`)
+
+| # | 심각도 | 주장 | 실증 |
+|---|---|---|---|
+| 1 | **High** | 게이트가 meta와 scored만 비교하고 **디스크 모델 바이트를 검증하지 않음** | ✅ seed 7 모델로 바꿔치기 → `identity_is_consistent` **True**, stage **skip**, 바꿔치기 유지 |
+| 2 | Med | 학습 seed와 meta 기록 seed가 어긋날 수 있음 | ✅ config를 7로 바꿔도 모델은 seed 42 산물인데 meta엔 **7** 기록 |
+| 3 | Med | `artifact_id`는 same run이 아니라 same content | ✅ 2회 실행 `trained_at` 다르나 id 동일, runB 모델+runA 점수 조합 통과 |
+| 4 | Med | `save_model`이 유효 meta를 `{}`로 덮어씀 | ✅ 7필드 → `{}` 확인 |
+| 5 | Med | `write_with_meta(meta_path=target)` 허용 | ✅ 모델 파일에 JSON만 남고 **오류 없음** |
+| 6-7 | Low | 결정론 주장 범위·fail-closed 원인 은폐 | ✅ 확인 |
+
+### 적용한 패치
+
+- **[High]** `read_verified_model_meta()` 신설 — 기록 + **디스크 파일 sha256**을 함께 검증. `identity_is_consistent`가
+  이 함수만 사용하도록 교체(소비자 1-7·4-1도 이것을 쓴다). `read_model_meta`에 **id 형식 검증**(64자 소문자 hex) 추가 —
+  `42`·대문자·63자 등은 거부. 재현 시나리오를 그대로 회귀 테스트로 고정(바꿔치기·1바이트 손상·파일 부재).
+- **[Med-1]** stage가 `seed = config.RANDOM_SEED` 한 값을 잡아 **`fit_and_compare`와 meta 양쪽에 주입**(AD-7 명시 주입).
+  `monkeypatch`로 seed 7을 넣고 **실제 모델이 seed 7 산물인지 해시로 대조**하는 테스트 추가.
+- **[Med-2]** 문구 정정: "같은 학습 실행" → **"같은 모델 내용"**. 모듈 docstring·리포트·예외 메시지 전부.
+  `run_id`(nonce) 분리는 요구하는 소비자가 없어 도입하지 않음(근거를 docstring에 기재).
+- **[Med-3]** `save_model` **삭제**(`__all__` 포함). 호출부 0건 확인 후 제거 — "대비용 보존"은 근거가 못 된다는 지적 수용.
+- **[Med-4]** `write_with_meta`가 `target`과 `meta_path`의 **resolve() 동일성**을 거부(symlink·alias 포함). 회귀 테스트 추가.
+- **[Low-1]** 결정론 주장을 **고정 실행 환경 범위**로 한정(인터프리터·라이브러리·플랫폼 이동 시 다른 id 가능,
+  단 방향은 보수적 안전). docstring·리포트에 명시.
+- **[Low-2]** `identity_is_consistent`가 재실행 **사유를 로깅**(모델 해시 불일치 / 컬럼 부재 / 다중 id / 값 불일치 /
+  scored 부재). 원인 은폐 없이 비싼 재학습의 이유를 남긴다.
+
+### 패치 후 재검증
+
+- 재현 스크립트 재실행: High **False→재실행으로 원본 복구**, Med-1 **meta 7 = 실제 학습 7**, Med-3 **함수 부재로 재현 불가**,
+  Med-4 **ValueError로 거부**. Med-2는 설계상 유지(문구로 해소).
+- 변이(파일 해시 검증 제거) → 테스트 4건 동시 **KILLED**.
+- 실데이터 재검증: 디스크 해시 = meta = scored id, seed 42, lift +86.7%(1-6a 불변). 구조 가드 전종 0 위반.
+- **224 → 237 passed**, 회귀 0.
+
 ## Change Log
 
 | 날짜 | 변경 |
 |---|---|
 | 2026-07-21 | 스토리 1-6b create-story: AD-5 정체성(artifact_id·churn_model.meta.json·scored 결속·불일치 즉시 실패·게이트 강화). meta에 `metrics` 포함 결정. Status → ready-for-dev. 기준선 196 passed |
 | 2026-07-21 | 스토리 1-6b 구현: artifact_id=sha256(joblib bytes) 확정(바이트 안정성 실측), meta.json 7필드+metrics, scored 결속, 게이트 fail-closed, write_with_meta meta_path 확장. 1-6a 지표 완전 재현. 196 → 224 passed, 회귀 0. Status → review |
+| 2026-07-21 | 외부 GPT 리뷰 7건 처리(High 1·Med 4·Low 2): 디스크 모델 해시 검증(read_verified_model_meta)·id 형식 검증·seed 명시 주입·save_model 삭제·meta_path 충돌 차단·"same run"→"same content" 문구 정정·재실행 사유 로깅. 224 → 237 passed, 회귀 0 |

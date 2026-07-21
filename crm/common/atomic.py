@@ -93,6 +93,15 @@ def write_with_meta(
     the identity record reuses this rather than re-deriving the rollback.
     """
     meta_file = meta_path_for(target) if meta_path is None else meta_path
+    # Widening a shared contract means widening its failure modes: with the same
+    # path for both, the meta write lands ON the output and the caller is told
+    # it succeeded, leaving a "model" that is actually JSON. Resolve first so an
+    # alias or symlink cannot smuggle the collision past a string comparison.
+    if target.resolve(strict=False) == meta_file.resolve(strict=False):
+        raise ValueError(
+            f"meta_path must differ from the output path (both are {target}) - "
+            f"the meta write would overwrite the artifact it describes"
+        )
     previous: Path | None = None
     try:
         if target.exists():

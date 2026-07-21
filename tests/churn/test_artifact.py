@@ -28,6 +28,7 @@ from crm.churn.artifact import (
     identity_is_consistent,
     model_meta_path,
     read_model_meta,
+    read_verified_model_meta,
     save_model_with_identity,
     serialize_model,
     verify_artifact_identity,
@@ -177,6 +178,59 @@ def test_read_model_meta_fails_fast_when_the_record_is_missing(tmp_path):
         read_model_meta(tmp_path / "churn_model.joblib")
 
 
+def test_read_verified_model_meta_rejects_swapped_model_bytes(tmp_path):
+    # Review High: the record alone proves nothing. Replace the model with a
+    # DIFFERENT but perfectly valid one and leave the record untouched - a
+    # record-only check says everything agrees.
+    features, raw = _frames()
+    inputs = _input_files(tmp_path, features, raw)
+    model_p = tmp_path / "churn_model.joblib"
+    save_model_with_identity(
+        fit_and_compare(features, raw, seed=42).model, model_p, inputs=inputs, seed=42, metrics={}
+    )
+    model_p.write_bytes(serialize_model(fit_and_compare(features, raw, seed=7).model))
+
+    read_model_meta(model_p)  # the record itself is still well-formed
+    with pytest.raises(ArtifactIdentityError, match="mismatch"):
+        read_verified_model_meta(model_p)
+
+
+def test_read_verified_model_meta_rejects_corrupted_model_bytes(tmp_path):
+    features, raw = _frames()
+    inputs = _input_files(tmp_path, features, raw)
+    model_p = tmp_path / "churn_model.joblib"
+    save_model_with_identity(fit_and_compare(features, raw).model, model_p, inputs=inputs,
+                             seed=42, metrics={})
+    payload = bytearray(model_p.read_bytes())
+    payload[-1] ^= 0xFF  # one flipped byte
+    model_p.write_bytes(bytes(payload))
+
+    with pytest.raises(ArtifactIdentityError):
+        read_verified_model_meta(model_p)
+
+
+def test_read_verified_model_meta_fails_when_the_model_file_is_gone(tmp_path):
+    features, raw = _frames()
+    inputs = _input_files(tmp_path, features, raw)
+    model_p = tmp_path / "churn_model.joblib"
+    save_model_with_identity(fit_and_compare(features, raw).model, model_p, inputs=inputs,
+                             seed=42, metrics={})
+    model_p.unlink()
+    with pytest.raises(ArtifactIdentityError):
+        read_verified_model_meta(model_p)
+
+
+@pytest.mark.parametrize("bad_id", [42, "abc", "A" * 64, "z" * 64, None, "0" * 63])
+def test_read_model_meta_rejects_a_non_sha256_artifact_id(tmp_path, bad_id):
+    # An id is a 64-char lowercase hex digest. Without the format check a record
+    # carrying 42 would compare equal to nothing and quietly pass some paths.
+    model_p = tmp_path / "churn_model.joblib"
+    model_p.write_bytes(b"x")
+    model_meta_path(model_p).write_text(json.dumps({"artifact_id": bad_id}), encoding="utf-8")
+    with pytest.raises(ArtifactIdentityError):
+        read_model_meta(model_p)
+
+
 def test_read_model_meta_fails_fast_on_a_malformed_record(tmp_path):
     model_p = tmp_path / "churn_model.joblib"
     model_p.write_bytes(b"x")
@@ -248,6 +302,36 @@ def test_identity_is_consistent_across_a_real_save_and_stamp(tmp_path):
     attach_artifact_id(result.scored, aid).to_parquet(scored_p, index=False)
 
     assert identity_is_consistent(model_p, scored_p) is True
+
+
+def test_identity_is_consistent_rejects_a_swapped_model(tmp_path):
+    # The whole point of the High fix: meta and scores agreeing with EACH OTHER
+    # is not enough when the .joblib underneath them was replaced.
+    features, raw = _frames()
+    inputs = _input_files(tmp_path, features, raw)
+    model_p = tmp_path / "churn_model.joblib"
+    scored_p = tmp_path / "churn_scored.parquet"
+    result = fit_and_compare(features, raw, seed=42)
+    aid = save_model_with_identity(result.model, model_p, inputs=inputs, seed=42, metrics={})
+    attach_artifact_id(result.scored, aid).to_parquet(scored_p, index=False)
+    assert identity_is_consistent(model_p, scored_p) is True
+
+    model_p.write_bytes(serialize_model(fit_and_compare(features, raw, seed=7).model))
+
+    assert identity_is_consistent(model_p, scored_p) is False
+
+
+def test_write_with_meta_refuses_to_overwrite_the_artifact_with_its_own_meta(tmp_path):
+    # Review Med-4: widening the shared contract widened its failure modes. With
+    # one path for both, the artifact ends up containing JSON and the caller is
+    # told it worked.
+    from crm.common.atomic import write_with_meta
+
+    target = tmp_path / "churn_model.joblib"
+    with pytest.raises(ValueError, match="must differ"):
+        write_with_meta(target, lambda tmp: tmp.write_bytes(b"MODEL"),
+                        {"artifact_id": "a" * 64}, meta_path=target)
+    assert not target.exists()
 
 
 @pytest.mark.parametrize("break_it", ["tamper", "drop_column", "two_ids", "no_meta", "no_scored"])
