@@ -60,6 +60,19 @@ def atomic_write_parquet(target: Path, frame: pd.DataFrame) -> None:
     _atomic_write(target, lambda tmp: frame.to_parquet(tmp, index=False))
 
 
+def write_parquet_with_meta(target: Path, frame: pd.DataFrame, meta: dict[str, Any]) -> None:
+    """Emit (parquet output + meta) atomically.
+
+    Convenience over ``write_with_meta`` so a pipeline stage passes a frame and
+    meta without spelling the parquet-writing mechanism itself - the writer
+    closure lives here (AD-9: this module owns the write MECHANISM; the stage
+    owns only the policy of what/where). Keeping the closure out of ``pipelines/``
+    also satisfies the pipeline-shape guard, which forbids a stage defining any
+    callable besides ``main``.
+    """
+    write_with_meta(target, lambda tmp: frame.to_parquet(tmp, index=False), meta)
+
+
 def write_with_meta(target: Path, writer: Callable[[Path], None], meta: dict[str, Any]) -> None:
     """Emit (output + meta) as one unit, or leave the target untouched.
 

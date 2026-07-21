@@ -15,16 +15,24 @@ Definitions fixed here (do not reinterpret in later stories):
 - A stage is identified by its ``stage`` string (e.g. ``"01_download"``), not by
   filename conventions - filenames change, the contract should not.
 
-KNOWN LIMITATION (story 1-1b review, scheduled for 1-3):
-``build_meta`` records each input's SHA-256, but ``verify_inputs`` does NOT yet
-compare those recorded hashes against the inputs as they stand now. So the
-canonical AD-13 scenario - someone edits stage 02's CODE and reruns 02 and 05
-while a colleague reruns only 05 - passes today whenever ``crm/config.py`` is
-unchanged. Closing it needs the CONSUMING stage to compare its own previous
-output meta against the current inputs (``is_output_stale(output, inputs)``),
-which only becomes testable once a stage actually consumes another's output
-(story 1-3). Until then this module catches config drift and wrong-producer
-inputs, not code-driven staleness.
+DQ2 - CLOSED in story 1-3 (was: known limitation from 1-1b review):
+``verify_inputs`` still only checks a fresh input's producer stage and
+``config_hash`` - it does NOT compare recorded input hashes against the inputs
+as they stand now, because it has no notion of a PREVIOUS output to reason
+about. ``is_output_stale(output, inputs)`` closes that gap from the other side:
+a CONSUMING stage reads its own previous output's meta and compares the
+``inputs`` hashes recorded there against the current input files. If any differ
+(or the output/meta is absent), the stage is stale and must recompute. Story
+1-3 (02_features, the first stage to consume another stage's output) wires the
+two gates in sequence: ``verify_inputs`` (right producer + no config drift) then
+``is_output_stale`` (same producer, but the input CONTENT changed since our last
+run). Together they make the canonical AD-13 scenario - 02's inputs change and
+02/05 rerun while a colleague reruns only 05 - fail loudly instead of silently
+committing a mart that mixes new features with old probabilities.
+
+STILL OUT OF CONTRACT (do not claim otherwise): the OUTPUT's own content hash is
+not recorded, so hand-editing a parquet in place is not detected (deferred-work
+1-1b). ``is_output_stale`` reasons about input drift, not output tampering.
 
 All functions are stateless and pure apart from reading the files they are
 given (AD-1). Writing to disk goes through ``crm.common.atomic`` - that module
@@ -165,3 +173,53 @@ def verify_inputs(input_paths: Iterable[Path], expected_stage: str) -> None:
                 f"stale config for {path.name}: it was produced under a different "
                 f"crm/config.py - rerun its producing stage ('{expected_stage}')"
             )
+
+
+def is_output_stale(output: Path, inputs: Iterable[Path]) -> bool:
+    """True if ``output`` must be recomputed because its inputs changed (DQ2).
+
+    Closes the gap ``verify_inputs`` cannot see (module doc, DQ2): a consuming
+    stage calls this against its OWN previous output before rerunning. It reads
+    the output's ``.meta.json`` and compares the input SHA-256 hashes recorded
+    there against the input files as they stand now.
+
+    Stale (return True) when:
+      - the output or its meta is missing (never produced -> must run),
+      - the meta is unreadable or not a JSON object (cannot trust it -> rerun),
+      - any current input's hash differs from the one recorded at production,
+      - an input recorded before is now missing, or an input is passed now that
+        the previous run did not record (the input SET changed).
+
+    Fresh (return False) only when every passed input exists AND its current
+    hash matches the recorded one AND the recorded and passed input sets are
+    identical. Pure apart from reading the files it is given (AD-1).
+    """
+    meta_file = meta_path_for(output)
+    if not output.exists() or not meta_file.exists():
+        return True
+
+    try:
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return True
+    if not isinstance(meta, dict):
+        return True
+
+    recorded = meta.get("inputs")
+    if not isinstance(recorded, dict):
+        # A meta without a usable input record cannot prove freshness.
+        return True
+
+    current_paths = list(inputs)
+    # Set mismatch is staleness on its own: a dropped or added input means the
+    # previous output was built from a different set than we would feed now.
+    if {path.name for path in current_paths} != set(recorded.keys()):
+        return True
+
+    for path in current_paths:
+        if not path.exists():
+            return True
+        if file_sha256(path) != recorded.get(path.name):
+            return True
+
+    return False

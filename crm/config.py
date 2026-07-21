@@ -37,6 +37,13 @@ DATA_DIR: Path = PROJECT_ROOT / "data"  # source: 경로규약 (gitignored)
 MODELS_DIR: Path = PROJECT_ROOT / "models"  # source: 경로규약 (gitignored)
 MARTS_DIR: Path = PROJECT_ROOT / "marts"  # source: 경로규약 (committed; AD-2)
 
+# --- Feature engineering conventions -----------------------------------------
+# RFM quantile-score bucket count. A convention, NOT a value derived from data:
+# the number 5 is the classic RFM quintile choice and is chosen a priori, so it
+# is allowed here (AD-1 forbids only DATA-DERIVED constants). The bucket EDGES
+# are computed at runtime from the BankChurners frame and never parked here.
+RFM_QUANTILES: int = 5  # source: 규약 (classic RFM quintile convention)
+
 # --- Campaign policy assumptions (NFR1: assumptions, not measurements) -------
 # These are NOT estimated from data. They are stated assumptions, and every
 # artifact that uses them must label them as such. Robustness is CAP-7's job

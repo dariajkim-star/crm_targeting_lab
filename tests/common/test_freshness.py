@@ -198,3 +198,78 @@ def test_verify_inputs_reports_the_offending_path(tmp_path: Path) -> None:
 
     with pytest.raises(freshness.StaleInputError, match="bad.parquet"):
         freshness.verify_inputs([good, bad], expected_stage="01_download")
+
+
+# --- is_output_stale: DQ2 closure (story 1-3) --------------------------------
+# The consuming stage compares its OWN previous output meta's recorded input
+# hashes against the inputs as they stand now. These build the output meta with
+# the REAL build_meta so the recorded hashes are genuine, then observe drift.
+
+
+def _output_built_from(output: Path, inputs: list[Path]) -> None:
+    """Write an output + a real meta recording the current hashes of `inputs`."""
+    output.write_bytes(b"features")
+    meta = freshness.build_meta(stage="02_features", inputs=inputs, rows=len(inputs))
+    freshness.meta_path_for(output).write_text(json.dumps(meta), encoding="utf-8")
+
+
+def test_is_output_stale_false_when_inputs_unchanged(tmp_path: Path) -> None:
+    src = tmp_path / "bankchurners.parquet"
+    src.write_bytes(b"raw-v1")
+    out = tmp_path / "features_customers.parquet"
+    _output_built_from(out, [src])
+    assert freshness.is_output_stale(out, [src]) is False
+
+
+def test_is_output_stale_true_when_input_content_changed(tmp_path: Path) -> None:
+    # THE DQ2 scenario: same producer, same config, but the input bytes changed
+    # since our last run. verify_inputs would pass; is_output_stale must not.
+    src = tmp_path / "bankchurners.parquet"
+    src.write_bytes(b"raw-v1")
+    out = tmp_path / "features_customers.parquet"
+    _output_built_from(out, [src])
+    src.write_bytes(b"raw-v2-EDITED")
+    assert freshness.is_output_stale(out, [src]) is True
+
+
+def test_is_output_stale_true_when_output_missing(tmp_path: Path) -> None:
+    src = tmp_path / "bankchurners.parquet"
+    src.write_bytes(b"raw")
+    assert freshness.is_output_stale(tmp_path / "never_built.parquet", [src]) is True
+
+
+def test_is_output_stale_true_when_meta_missing(tmp_path: Path) -> None:
+    src = tmp_path / "bankchurners.parquet"
+    src.write_bytes(b"raw")
+    out = tmp_path / "features_customers.parquet"
+    out.write_bytes(b"features")  # output exists but no meta beside it
+    assert freshness.is_output_stale(out, [src]) is True
+
+
+def test_is_output_stale_true_when_input_set_changes(tmp_path: Path) -> None:
+    src = tmp_path / "bankchurners.parquet"
+    src.write_bytes(b"raw")
+    extra = tmp_path / "extra.parquet"
+    extra.write_bytes(b"more")
+    out = tmp_path / "features_customers.parquet"
+    _output_built_from(out, [src])
+    # An input the previous run never recorded => built from a different set.
+    assert freshness.is_output_stale(out, [src, extra]) is True
+
+
+def test_is_output_stale_true_when_recorded_input_now_missing(tmp_path: Path) -> None:
+    src = tmp_path / "bankchurners.parquet"
+    src.write_bytes(b"raw")
+    out = tmp_path / "features_customers.parquet"
+    _output_built_from(out, [src])
+    src.unlink()
+    assert freshness.is_output_stale(out, [src]) is True
+
+
+def test_is_output_stale_true_on_unusable_meta(tmp_path: Path) -> None:
+    src = tmp_path / "bankchurners.parquet"
+    src.write_bytes(b"raw")
+    out = tmp_path / "features_customers.parquet"
+    out.write_bytes(b"features")
+    freshness.meta_path_for(out).write_text("{not json", encoding="utf-8")
+    assert freshness.is_output_stale(out, [src]) is True
