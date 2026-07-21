@@ -5,7 +5,7 @@ baseline_passed: 196
 
 # Story 1.6b: 아티팩트 정체성과 churn_model.meta.json (AD-5)
 
-Status: review
+Status: done
 
 > **분할 안내**: 원 스토리 1.6을 1-6a/1-6b로 분할(2026-07-21). **1-6a(done)** = 두 모델·CV·PR-AUC·리프트·라벨(AD-6)·
 > 누수 재감사. **1-6b(이 스토리)** = AD-5 아티팩트 **정체성**: `models/churn_model.meta.json` + `artifact_id` +
@@ -381,5 +381,6 @@ Med-3(=1차 Med-4) **ValueError 거부**, Med-4(=1차 Med-3) **함수 부재**.
 |---|---|
 | 2026-07-21 | 스토리 1-6b create-story: AD-5 정체성(artifact_id·churn_model.meta.json·scored 결속·불일치 즉시 실패·게이트 강화). meta에 `metrics` 포함 결정. Status → ready-for-dev. 기준선 196 passed |
 | 2026-07-21 | 스토리 1-6b 구현: artifact_id=sha256(joblib bytes) 확정(바이트 안정성 실측), meta.json 7필드+metrics, scored 결속, 게이트 fail-closed, write_with_meta meta_path 확장. 1-6a 지표 완전 재현. 196 → 224 passed, 회귀 0. Status → review |
+| 2026-07-21 | 스토리 1-6b done. 외부리뷰 2라운드(1차 7건·2차 신규 3건) 반영 완료, 242 passed. 1-7 SHAP이 read_verified_model_meta/verify_artifact_identity를 인계받는다 |
 | 2026-07-21 | 2차 재리뷰: 9건 중 6건은 1차 반영분 재지적(pre-image 오독, HEAD 대조로 확인), 신규 3건 처리 — NA/비문자열 stamp fail-closed 복구(TypeError 전파 실재), 예외 범위 확대+근거 주석, subprocess 결정론 테스트, 테스트 문구 정정. 237 → 242 passed |
 | 2026-07-21 | 외부 GPT 리뷰 7건 처리(High 1·Med 4·Low 2): 디스크 모델 해시 검증(read_verified_model_meta)·id 형식 검증·seed 명시 주입·save_model 삭제·meta_path 충돌 차단·"same run"→"same content" 문구 정정·재실행 사유 로깅. 224 → 237 passed, 회귀 0 |
