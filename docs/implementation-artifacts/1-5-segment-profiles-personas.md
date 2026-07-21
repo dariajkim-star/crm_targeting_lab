@@ -5,7 +5,7 @@ baseline_passed: 150
 
 # Story 1.5: 세그먼트 프로필과 페르소나
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -34,31 +34,31 @@ so that 이후 리텐션 액션을 사람 단위로 상상할 수 있다.
 
 ## Tasks / Subtasks
 
-- [ ] **T1. 세그먼트 프로필 순수 모듈 `crm/segment/profile.py`** (AC: 1, 2) ← 로직 소유(재현성의 코드 경로)
-  - [ ] `segment_profiles(features: pd.DataFrame, raw: pd.DataFrame) -> pd.DataFrame` — segment_id별 요약(순수 함수, 입력 불변·파일 미기록). segment_id를 인덱스로, 컬럼은 `n`·`share`(비중)·수치 지표 중앙값(나이·재직개월·신용한도·이용률·`monetary_proxy`·`frequency_proxy`·`recency_proxy` 등).
-  - [ ] `segment_category_shares(features, raw, column) -> pd.DataFrame` — segment_id × 범주 비율표(성별·학력·소득·카드등급·혼인). 각 행 합=1.
-  - [ ] **인구통계는 raw bankchurners에 있고 features에는 없다** → `CLIENTNUM`으로 조인. 조인은 **features 기준 left**(세그먼트 있는 고객 집합), 조인 키 유일성은 1-4가 이미 보장(재확인 방어 권장).
-  - [ ] **🚨 AD-11**: profile.py는 `crm/` 아래이므로 **`Total_Trans_Amt`를 어떤 형태로도 명명 금지**. 가치 지표는 features의 `monetary_proxy`(= 저장된 `customer_value` 출력)를 소비. raw에서 뽑는 인구통계는 **화이트리스트**로 명시(`Total_Trans_Amt`·누수 컬럼 절대 제외). `find_value_recomputation_violations` 가드가 이 파일을 스캔한다.
-  - [ ] **CAP-5 준수**: `Total_Revolving_Bal`·`Credit_Limit`은 **프로파일링 참고 지표**로만 사용(가치 축 산입 금지, 2026-07-20 개정). 프로필 표에 넣는 건 허용, 가치로 합산·재가중은 금지.
-- [ ] **T2. 프로필 리포트 + 페르소나** (AC: 1, 2, 3) — `docs/implementation-artifacts/segment-profile-report-1-5.md`
-  - [ ] segment_id별(1..4) **요약표**: 고객 수·비중, 수치 지표 중앙값, 주요 범주 분포(성별·소득·카드등급 등). 수치는 T1 함수로 산출(재현 가능, AC2).
-  - [ ] **페르소나 4개**(현재 k=4). 각 페르소나: 한 줄 정체성 + 가치/행동 특징 + 대표 인구통계 + (다음 스토리를 위한) 리텐션 가설. **가치순(segment 1=최고가치)** 서술.
-  - [ ] **AC3 정직성**: 현재 `SEGMENT_K=4`라 페르소나 정확히 4개(4~6 범위 내). 이 사실과 "k가 바뀌면 페르소나 수도 따라간다"를 리포트에 명시. 억지 분할·병합 금지.
-  - [ ] **NFR3 무단위**: `monetary_proxy` 등 **우리가 산출한 금액성 지표에 통화 기호 금지**. ⚠️ 단, `Income_Category` 라벨은 데이터셋 원본 범주 문자열("Less than $40K" 등)이라 **원문 그대로** 인용(우리가 붙인 기호가 아님) — 이 구분을 리포트에 한 줄 명기.
-  - [ ] **정직성(데이터 품질)**: `Education_Level` Unknown ~15%·`Income_Category` Unknown ~11%·`Marital_Status` Unknown ~7%. **Unknown을 버리거나 대치하지 말고 하나의 범주로 표기**. `Card_Category`는 Blue ~93%, Platinum 20명 — 소셀 주의(비율만으로 과대해석 금지)를 각주로.
-  - [ ] **출처 명시(AC2/conventions 4)**: 각 수치의 출처(함수·입력 파일)를 리포트에 기재. 재현 커맨드 한 줄 포함.
-- [ ] **T3. 행동 기반 테스트** (AC: 1, 2) — `tests/segment/test_profile.py`
-  - [ ] **동어반복 금지**: 구현 집계를 재구현해 비교하지 말 것. 성질로 검증.
-  - [ ] `n` 합 = 전체 고객 수, `share` 합 = 1(부동소수 허용오차). `segment_category_shares` 각 세그먼트 행 합 = 1.
-  - [ ] **1-4 정합성**: segment 1의 `monetary_proxy` 중앙값이 가장 높고 segment 4로 단조 감소(1-4 가치순 안정 ID와 일치). 이게 프로필과 세그먼트 정의의 연결을 실증.
-  - [ ] **조인 정확성**: 특정 CLIENTNUM의 인구통계가 raw의 그 고객 값과 일치(합성 데이터로).
-  - [ ] **Unknown 보존**: `Unknown` 범주가 결과에서 사라지지 않음(드롭·대치 안 함).
-  - [ ] **순수성**: 입력 프레임 불변, 파일 미기록.
-  - [ ] **AD-11**: 프로필 산출물에 `Total_Trans_Amt` 컬럼이 없음(가치는 monetary_proxy로만).
-  - [ ] 방어: features에 있는 CLIENTNUM이 raw에 없을 때 정책(명확한 실패 또는 문서화된 처리).
-- [ ] **T4. 실행·커밋**
-  - [ ] 실데이터(features_customers + bankchurners, n=10,127)로 프로필 산출 → 리포트 수치 재현. 무단위·Unknown 정직 표기 확인.
-  - [ ] `pytest` 전체 green. **현 기준선 150 passed, 회귀 0.** 스토리 단위 커밋. Obsidian 미러 갱신.
+- [x] **T1. 세그먼트 프로필 순수 모듈 `crm/segment/profile.py`** (AC: 1, 2) ← 로직 소유(재현성의 코드 경로)
+  - [x] `segment_profiles(features: pd.DataFrame, raw: pd.DataFrame) -> pd.DataFrame` — segment_id별 요약(순수 함수, 입력 불변·파일 미기록). segment_id를 인덱스로, 컬럼은 `n`·`share`(비중)·수치 지표 중앙값(나이·재직개월·신용한도·이용률·`monetary_proxy`·`frequency_proxy`·`recency_proxy` 등).
+  - [x] `segment_category_shares(features, raw, column) -> pd.DataFrame` — segment_id × 범주 비율표(성별·학력·소득·카드등급·혼인). 각 행 합=1.
+  - [x] **인구통계는 raw bankchurners에 있고 features에는 없다** → `CLIENTNUM`으로 조인. 조인은 **features 기준 left**(세그먼트 있는 고객 집합), 조인 키 유일성은 1-4가 이미 보장(재확인 방어 권장).
+  - [x] **🚨 AD-11**: profile.py는 `crm/` 아래이므로 **`Total_Trans_Amt`를 어떤 형태로도 명명 금지**. 가치 지표는 features의 `monetary_proxy`(= 저장된 `customer_value` 출력)를 소비. raw에서 뽑는 인구통계는 **화이트리스트**로 명시(`Total_Trans_Amt`·누수 컬럼 절대 제외). `find_value_recomputation_violations` 가드가 이 파일을 스캔한다.
+  - [x] **CAP-5 준수**: `Total_Revolving_Bal`·`Credit_Limit`은 **프로파일링 참고 지표**로만 사용(가치 축 산입 금지, 2026-07-20 개정). 프로필 표에 넣는 건 허용, 가치로 합산·재가중은 금지.
+- [x] **T2. 프로필 리포트 + 페르소나** (AC: 1, 2, 3) — `docs/implementation-artifacts/segment-profile-report-1-5.md`
+  - [x] segment_id별(1..4) **요약표**: 고객 수·비중, 수치 지표 중앙값, 주요 범주 분포(성별·소득·카드등급 등). 수치는 T1 함수로 산출(재현 가능, AC2).
+  - [x] **페르소나 4개**(현재 k=4). 각 페르소나: 한 줄 정체성 + 가치/행동 특징 + 대표 인구통계 + (다음 스토리를 위한) 리텐션 가설. **가치순(segment 1=최고가치)** 서술.
+  - [x] **AC3 정직성**: 현재 `SEGMENT_K=4`라 페르소나 정확히 4개(4~6 범위 내). 이 사실과 "k가 바뀌면 페르소나 수도 따라간다"를 리포트에 명시. 억지 분할·병합 금지.
+  - [x] **NFR3 무단위**: `monetary_proxy` 등 **우리가 산출한 금액성 지표에 통화 기호 금지**. ⚠️ 단, `Income_Category` 라벨은 데이터셋 원본 범주 문자열("Less than $40K" 등)이라 **원문 그대로** 인용(우리가 붙인 기호가 아님) — 이 구분을 리포트에 한 줄 명기.
+  - [x] **정직성(데이터 품질)**: `Education_Level` Unknown ~15%·`Income_Category` Unknown ~11%·`Marital_Status` Unknown ~7%. **Unknown을 버리거나 대치하지 말고 하나의 범주로 표기**. `Card_Category`는 Blue ~93%, Platinum 20명 — 소셀 주의(비율만으로 과대해석 금지)를 각주로.
+  - [x] **출처 명시(AC2/conventions 4)**: 각 수치의 출처(함수·입력 파일)를 리포트에 기재. 재현 커맨드 한 줄 포함.
+- [x] **T3. 행동 기반 테스트** (AC: 1, 2) — `tests/segment/test_profile.py`
+  - [x] **동어반복 금지**: 구현 집계를 재구현해 비교하지 말 것. 성질로 검증.
+  - [x] `n` 합 = 전체 고객 수, `share` 합 = 1(부동소수 허용오차). `segment_category_shares` 각 세그먼트 행 합 = 1.
+  - [x] **1-4 정합성**: segment 1의 `monetary_proxy` 중앙값이 가장 높고 segment 4로 단조 감소(1-4 가치순 안정 ID와 일치). 이게 프로필과 세그먼트 정의의 연결을 실증.
+  - [x] **조인 정확성**: 특정 CLIENTNUM의 인구통계가 raw의 그 고객 값과 일치(합성 데이터로).
+  - [x] **Unknown 보존**: `Unknown` 범주가 결과에서 사라지지 않음(드롭·대치 안 함).
+  - [x] **순수성**: 입력 프레임 불변, 파일 미기록.
+  - [x] **AD-11**: 프로필 산출물에 `Total_Trans_Amt` 컬럼이 없음(가치는 monetary_proxy로만).
+  - [x] 방어: features에 있는 CLIENTNUM이 raw에 없을 때 정책(명확한 실패 또는 문서화된 처리).
+- [x] **T4. 실행·커밋**
+  - [x] 실데이터(features_customers + bankchurners, n=10,127)로 프로필 산출 → 리포트 수치 재현. 무단위·Unknown 정직 표기 확인.
+  - [x] `pytest` 전체 green. **현 기준선 150 passed, 회귀 0.** 스토리 단위 커밋. Obsidian 미러 갱신.
 
 ## Dev Notes
 
@@ -156,14 +156,54 @@ docs/implementation-artifacts/segment-profile-report-1-5.md   # NEW - 요약표 
 
 ### Agent Model Used
 
+claude-opus-4-8 (bmad-dev-story)
+
 ### Debug Log References
+
+**기준선**: HEAD `047d2c1`, 150 passed. 신규 파이프라인 단계·의존성 없음(순수 함수 + 세션 리포트).
+
+**AD-11 가드**: profile.py 추가 후 `find_value_recomputation_violations` scanned 11→13, 위반 0.
+`monetary_proxy` 소비, raw 인구통계는 화이트리스트(`Total_Trans_Amt`·누수 컬럼 제외).
+
+**실데이터 산출**(features ⋈ raw on CLIENTNUM = 10,127 완전 일치):
+```
+segment n/share:  1:770/7.6%  2:3329/32.9%  3:2777/27.4%  4:3251/32.1%
+monetary 중앙: 14621 / 4350 / 4312 / 1774 (1-4 가치순과 일치)
+seg1 특이: 관계수 2(타 4)·프리미엄 카드 비중↑·이탈 0%
+이탈률(참고,1-6 타깃): 0% / 4% / 11.6% / 36.1%
+```
+
+**정직한 발견**: 나이·학력·혼인 분포가 세그먼트 간 거의 평탄 — 세분화는 인구통계가 아니라 **행동
+(거래액·빈도·최근성)과 이탈률**이 주도. 페르소나를 인구통계 스테레오타입이 아닌 행동 기반으로 서술.
+
+**Attrition 취급**: `Attrition_Flag`는 1-6의 타깃이라 `profile.py`에 넣지 않음(타깃 누수 위생). 페르소나
+리텐션 가설을 위해 리포트에 "참고(1-6 타깃)"로만 인용, 재현 스니펫 명기.
+
+**테스트 검출력(변이)**: shares 미정규화·Unknown 드롭·가치를 raw Total_Trans_Amt로 변경 — 전부 KILLED.
 
 ### Completion Notes List
 
+- **AC1 충족**: `segment_profiles`(n·share·수치 중앙값)·`segment_category_shares`(범주 비율). 페르소나 4개
+  (k=4)를 가치순으로 서술. 리포트에 요약표 + 소득/카드 분포 + 페르소나.
+- **AC2 충족**: 모든 리포트 수치는 커밋·테스트된 `crm/segment/profile.py`로 재현(재현 커맨드 명기).
+  **무단위**: `monetary_proxy` 등에 통화 기호 없음. `Income_Category`의 "$" 라벨은 데이터 원본임을 명기(예외 구분).
+- **AC3 충족**: k=4 → 페르소나 정확히 4개(4~6 범위). "k 변하면 페르소나 수도 따라간다" 명시, 억지 분할 없음.
+- **AD-11**: `monetary_proxy` 소비만, `Total_Trans_Amt` 미명명 → 가드 위반 0. 프로필 산출물에 값 원컬럼 없음(테스트).
+- **정직성**: Unknown(소득11%·학력15%·혼인7%)을 범주로 보존, Platinum 20명 소셀 경고, 인구통계 평탄성 명시.
+- **테스트**: 150 → **161 passed** (+11: profile 11), 회귀 0. 구조 가드 전종 green.
+
 ### File List
+
+- `crm/segment/profile.py` — NEW, segment_profiles·segment_category_shares(순수, AD-11 준수)
+- `tests/segment/test_profile.py` — NEW, 성질·조인·Unknown보존·AD-11·1-4정합성·방어계약
+- `docs/implementation-artifacts/segment-profile-report-1-5.md` — NEW, 요약표 + 페르소나 4개
+- `docs/implementation-artifacts/structure-guard-coverage.md` — UPDATE, pytest 재생성
+- `docs/implementation-artifacts/1-5-segment-profiles-personas.md` — UPDATE, 본 기록
+- `docs/implementation-artifacts/sprint-status.yaml` — UPDATE, 상태 전이
 
 ## Change Log
 
 | 날짜 | 변경 |
 |---|---|
 | 2026-07-21 | 스토리 1-5 create-story: 세그먼트 프로필/카테고리 집계 순수 함수 + 페르소나 4개 리포트. AD-11 monetary_proxy 소비·Unknown 정직 표기·Income $ 라벨 구분. Status → ready-for-dev. 기준선 150 passed |
+| 2026-07-21 | 스토리 1-5 구현: profile.py(segment_profiles·category_shares)·페르소나 4개 리포트·행동 기반 테스트. 인구통계 평탄성·이탈률(참고) 발견. Attrition은 타깃이라 프로필 함수서 제외. 150 → 161 passed, 회귀 0. Status → review |
