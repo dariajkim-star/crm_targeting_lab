@@ -15,24 +15,28 @@ Definitions fixed here (do not reinterpret in later stories):
 - A stage is identified by its ``stage`` string (e.g. ``"01_download"``), not by
   filename conventions - filenames change, the contract should not.
 
-DQ2 - CLOSED in story 1-3 (was: known limitation from 1-1b review):
-``verify_inputs`` still only checks a fresh input's producer stage and
-``config_hash`` - it does NOT compare recorded input hashes against the inputs
-as they stand now, because it has no notion of a PREVIOUS output to reason
-about. ``is_output_stale(output, inputs)`` closes that gap from the other side:
-a CONSUMING stage reads its own previous output's meta and compares the
-``inputs`` hashes recorded there against the current input files. If any differ
-(or the output/meta is absent), the stage is stale and must recompute. Story
-1-3 (02_features, the first stage to consume another stage's output) wires the
-two gates in sequence: ``verify_inputs`` (right producer + no config drift) then
-``is_output_stale`` (same producer, but the input CONTENT changed since our last
-run). Together they make the canonical AD-13 scenario - 02's inputs change and
-02/05 rerun while a colleague reruns only 05 - fail loudly instead of silently
-committing a mart that mixes new features with old probabilities.
+DQ2 - PARTIALLY addressed in story 1-3 (was: known limitation from 1-1b review):
+``verify_inputs`` only checks a fresh input's producer stage and ``config_hash``
+- it does NOT compare recorded input hashes against the inputs as they stand
+now, because it has no notion of a PREVIOUS output to reason about.
+``is_output_stale(output, inputs, expected_stage=...)`` addresses that from the
+other side: a CONSUMING stage reads its own previous output's meta and, if the
+output's stage or config_hash drifted or any DIRECT input's bytes changed,
+recomputes. Story 1-3 (02_features, the first stage to consume another stage's
+output) wires the two gates in sequence: ``verify_inputs`` then ``is_output_stale``.
 
-STILL OUT OF CONTRACT (do not claim otherwise): the OUTPUT's own content hash is
-not recorded, so hand-editing a parquet in place is not detected (deferred-work
-1-1b). ``is_output_stale`` reasons about input drift, not output tampering.
+WHAT THIS DOES NOT DO (do not overclaim - review High-2):
+  - TRANSITIVE staleness. If 05 consumes ``features`` (byte-identical) that was
+    itself built from a since-changed ``bankchurners``, and only 05 reruns,
+    nothing here notices - a direct-input hash match does not prove the input is
+    itself fresh w.r.t. ITS sources. The "02's input changes, only 05 reruns"
+    case is NOT caught by this alone; it needs orchestrator-level DAG ordering
+    or recursive dependency verification (deferred-work.md).
+  - CODE-only drift. A change to a stage's code that leaves config.py untouched
+    is not detected (AD-13 fixes config_hash as the reference; code_commit is
+    context, never a gate).
+  - OUTPUT tampering. The output's own content hash is not recorded, so
+    hand-editing a parquet in place is not detected (deferred-work 1-1b).
 
 All functions are stateless and pure apart from reading the files they are
 given (AD-1). Writing to disk goes through ``crm.common.atomic`` - that module
@@ -175,34 +179,63 @@ def verify_inputs(input_paths: Iterable[Path], expected_stage: str) -> None:
             )
 
 
-def is_output_stale(output: Path, inputs: Iterable[Path]) -> bool:
-    """True if ``output`` must be recomputed because its inputs changed (DQ2).
+def is_output_stale(output: Path, inputs: Iterable[Path], *, expected_stage: str) -> bool:
+    """True if ``output`` must be recomputed (DQ2, DIRECT-input drift only).
 
-    Closes the gap ``verify_inputs`` cannot see (module doc, DQ2): a consuming
-    stage calls this against its OWN previous output before rerunning. It reads
-    the output's ``.meta.json`` and compares the input SHA-256 hashes recorded
-    there against the input files as they stand now.
+    A consuming stage calls this against its OWN previous output before
+    rerunning. Freshness is judged on the full cache key recorded in the
+    output's ``.meta.json``, not the input hashes alone:
 
-    Stale (return True) when:
-      - the output or its meta is missing (never produced -> must run),
-      - the meta is unreadable or not a JSON object (cannot trust it -> rerun),
-      - any current input's hash differs from the one recorded at production,
-      - an input recorded before is now missing, or an input is passed now that
-        the previous run did not record (the input SET changed).
+      - ``stage`` must equal ``expected_stage`` (the output is really OURS, not
+        a different stage's file left at this path),
+      - ``config_hash`` must equal the CURRENT crm/config.py hash (a config edit
+        that changes THIS stage's computation - e.g. RFM_QUANTILES - invalidates
+        the output even when the input bytes are unchanged; without this a config
+        change plus an upstream meta refresh reads as fresh, review High-1),
+      - every passed input must exist and hash-match the recorded input, and the
+        recorded and passed input SETS must be identical.
 
-    Fresh (return False) only when every passed input exists AND its current
-    hash matches the recorded one AND the recorded and passed input sets are
-    identical. Pure apart from reading the files it is given (AD-1).
+    Any of those failing -> stale. All holding -> fresh.
+
+    SCOPE - read before trusting this (review High-2). It detects drift of a
+    stage's OWN config and its DIRECT inputs. It does NOT chase TRANSITIVE
+    staleness: if input X is byte-identical but was itself built from a source
+    that has since changed, and only THIS stage reruns (never X's producer),
+    that goes undetected - nothing here compares X against X's own sources. Nor
+    does it detect a pure CODE change to the stage that leaves config.py
+    untouched (AD-13 fixes config_hash as the staleness reference; code_commit is
+    context, never a gate). Closing either needs orchestrator-level DAG ordering
+    or recursive dependency verification - see deferred-work.md.
+
+    Pure apart from reading the files it is given (AD-1). ``inputs`` must be
+    non-empty: a consuming stage has at least one file input, and treating the
+    empty set as trivially fresh would make this unsafe to reuse on a
+    network-source stage (review Low-8).
     """
+    current_paths = list(inputs)
+    if not current_paths:
+        raise ValueError(
+            "is_output_stale needs at least one input - it is for CONSUMING stages. "
+            "A network-source stage has no file inputs and needs a different policy."
+        )
+
     meta_file = meta_path_for(output)
     if not output.exists() or not meta_file.exists():
         return True
 
     try:
         meta = json.loads(meta_file.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        # OSError too (permission / lock / IO): an unreadable meta cannot prove
+        # freshness, and the fail-closed intent is to rerun, not to crash.
         return True
     if not isinstance(meta, dict):
+        return True
+
+    # Cache key beyond inputs: wrong stage or drifted config => stale (High-1).
+    if meta.get("stage") != expected_stage:
+        return True
+    if meta.get("config_hash") != config_hash():
         return True
 
     recorded = meta.get("inputs")
@@ -210,16 +243,18 @@ def is_output_stale(output: Path, inputs: Iterable[Path]) -> bool:
         # A meta without a usable input record cannot prove freshness.
         return True
 
-    current_paths = list(inputs)
     # Set mismatch is staleness on its own: a dropped or added input means the
     # previous output was built from a different set than we would feed now.
     if {path.name for path in current_paths} != set(recorded.keys()):
         return True
 
     for path in current_paths:
-        if not path.exists():
-            return True
-        if file_sha256(path) != recorded.get(path.name):
+        try:
+            if not path.exists() or file_sha256(path) != recorded.get(path.name):
+                return True
+        except OSError:
+            # Removed / locked between the exists() check and the hash: cannot
+            # prove fresh, so rerun (fail-closed, review Low-7).
             return True
 
     return False

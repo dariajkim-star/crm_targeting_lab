@@ -218,7 +218,7 @@ def test_is_output_stale_false_when_inputs_unchanged(tmp_path: Path) -> None:
     src.write_bytes(b"raw-v1")
     out = tmp_path / "features_customers.parquet"
     _output_built_from(out, [src])
-    assert freshness.is_output_stale(out, [src]) is False
+    assert freshness.is_output_stale(out, [src], expected_stage="02_features") is False
 
 
 def test_is_output_stale_true_when_input_content_changed(tmp_path: Path) -> None:
@@ -229,13 +229,13 @@ def test_is_output_stale_true_when_input_content_changed(tmp_path: Path) -> None
     out = tmp_path / "features_customers.parquet"
     _output_built_from(out, [src])
     src.write_bytes(b"raw-v2-EDITED")
-    assert freshness.is_output_stale(out, [src]) is True
+    assert freshness.is_output_stale(out, [src], expected_stage="02_features") is True
 
 
 def test_is_output_stale_true_when_output_missing(tmp_path: Path) -> None:
     src = tmp_path / "bankchurners.parquet"
     src.write_bytes(b"raw")
-    assert freshness.is_output_stale(tmp_path / "never_built.parquet", [src]) is True
+    assert freshness.is_output_stale(tmp_path / "never_built.parquet", [src], expected_stage="02_features") is True
 
 
 def test_is_output_stale_true_when_meta_missing(tmp_path: Path) -> None:
@@ -243,7 +243,7 @@ def test_is_output_stale_true_when_meta_missing(tmp_path: Path) -> None:
     src.write_bytes(b"raw")
     out = tmp_path / "features_customers.parquet"
     out.write_bytes(b"features")  # output exists but no meta beside it
-    assert freshness.is_output_stale(out, [src]) is True
+    assert freshness.is_output_stale(out, [src], expected_stage="02_features") is True
 
 
 def test_is_output_stale_true_when_input_set_changes(tmp_path: Path) -> None:
@@ -254,7 +254,7 @@ def test_is_output_stale_true_when_input_set_changes(tmp_path: Path) -> None:
     out = tmp_path / "features_customers.parquet"
     _output_built_from(out, [src])
     # An input the previous run never recorded => built from a different set.
-    assert freshness.is_output_stale(out, [src, extra]) is True
+    assert freshness.is_output_stale(out, [src, extra], expected_stage="02_features") is True
 
 
 def test_is_output_stale_true_when_recorded_input_now_missing(tmp_path: Path) -> None:
@@ -263,7 +263,7 @@ def test_is_output_stale_true_when_recorded_input_now_missing(tmp_path: Path) ->
     out = tmp_path / "features_customers.parquet"
     _output_built_from(out, [src])
     src.unlink()
-    assert freshness.is_output_stale(out, [src]) is True
+    assert freshness.is_output_stale(out, [src], expected_stage="02_features") is True
 
 
 def test_is_output_stale_true_on_unusable_meta(tmp_path: Path) -> None:
@@ -272,4 +272,51 @@ def test_is_output_stale_true_on_unusable_meta(tmp_path: Path) -> None:
     out = tmp_path / "features_customers.parquet"
     out.write_bytes(b"features")
     freshness.meta_path_for(out).write_text("{not json", encoding="utf-8")
-    assert freshness.is_output_stale(out, [src]) is True
+    assert freshness.is_output_stale(out, [src], expected_stage="02_features") is True
+
+
+# --- is_output_stale: full cache key (review High-1, Low-7, Low-8) -----------
+
+
+def test_is_output_stale_true_when_config_hash_drifts(tmp_path: Path) -> None:
+    # THE High-1 false-fresh: output built under a different config.py, inputs
+    # byte-identical. A RFM_QUANTILES change must invalidate the output even
+    # though the parquet bytes never moved.
+    src = tmp_path / "bankchurners.parquet"
+    src.write_bytes(b"raw-stable")
+    out = tmp_path / "features_customers.parquet"
+    out.write_bytes(b"features-5quantile")
+    meta = freshness.build_meta(stage="02_features", inputs=[src], rows=10)
+    meta["config_hash"] = "0" * 64  # produced under a now-superseded config
+    freshness.meta_path_for(out).write_text(json.dumps(meta), encoding="utf-8")
+    assert freshness.is_output_stale(out, [src], expected_stage="02_features") is True
+
+
+def test_is_output_stale_true_when_output_stage_mismatches(tmp_path: Path) -> None:
+    # A file left at our output path by a DIFFERENT stage is not ours -> stale.
+    src = tmp_path / "bankchurners.parquet"
+    src.write_bytes(b"raw")
+    out = tmp_path / "features_customers.parquet"
+    out.write_bytes(b"features")
+    meta = freshness.build_meta(stage="99_other", inputs=[src], rows=10)
+    freshness.meta_path_for(out).write_text(json.dumps(meta), encoding="utf-8")
+    assert freshness.is_output_stale(out, [src], expected_stage="02_features") is True
+
+
+def test_is_output_stale_rejects_empty_inputs(tmp_path: Path) -> None:
+    # A consuming stage always has >=1 input; empty must raise, not read fresh
+    # (guards against reuse on a network-source stage, review Low-8).
+    out = tmp_path / "features_customers.parquet"
+    out.write_bytes(b"features")
+    with pytest.raises(ValueError, match="at least one input"):
+        freshness.is_output_stale(out, [], expected_stage="02_features")
+
+
+def test_is_output_stale_fresh_only_on_full_match(tmp_path: Path) -> None:
+    # The positive path still returns False when stage, config and inputs all
+    # agree - the new gates did not make everything stale.
+    src = tmp_path / "bankchurners.parquet"
+    src.write_bytes(b"raw")
+    out = tmp_path / "features_customers.parquet"
+    _output_built_from(out, [src])
+    assert freshness.is_output_stale(out, [src], expected_stage="02_features") is False

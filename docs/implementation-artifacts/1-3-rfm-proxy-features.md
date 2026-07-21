@@ -222,18 +222,18 @@ F·M을 **반의존(anti-correlated)**으로 배치한 판별 테스트(`test_fr
   없음. 변이 4종(R 반전·M 클립·F/M 소스 혼동·누수 passthrough) 전부 KILLED.
 - **AC3 충족**: `write_parquet_with_meta`로 (parquet+meta) 원자적 기록. config drift 시
   `verify_inputs`가 실제로 stage를 중단시킴을 실행 중 확인(위 Debug Log).
-- **AC4 충족 (DQ2 해소)**: `is_output_stale(output, inputs)` 구현 — 소비 stage가 자기 이전
-  출력 meta의 입력 해시를 현재 입력과 대조. 입력 콘텐츠 변화·출력/​meta 부재·입력 집합 변화·
-  기록 입력 소실·손상 meta 모두 stale. 02_features에 `verify_inputs` 다음 2단 게이트로 배선.
-  freshness.py docstring의 KNOWN LIMITATION을 "DQ2 CLOSED"로 정정하고 **남는 한계(산출물
-  자체 콘텐츠 해시 부재)는 명확히 구분해 남김** — 거짓 완결 주장 없음. 단위 테스트 7건.
+- **AC4 (DQ2 부분 해소 — 리뷰 후 정정)**: `is_output_stale(output, inputs, *, expected_stage)`가
+  소비 stage 자기 출력의 **stage·config_hash·직접 입력 해시**를 cache key로 검사. 02_features에
+  `verify_inputs` 다음 2단 게이트로 배선. **닫지 못한 것은 정직하게 남김**(리뷰 High-2): 전이적
+  staleness(05-only 재실행)·순수 코드변경·산출물 자체 변조 → deferred-work.md. 초기 "DQ2 CLOSED"
+  과잉주장은 리뷰에서 지적받아 삭제. 단위 테스트 11건(config drift·stage 불일치·빈 입력 포함).
 - **AC5 충족**: `RFM_OUTPUT_COLUMNS` 화이트리스트로 파생 지표만 산출 → `Naive_Bayes_Classifier_*`
   2컬럼 구조적 배제. 합성 누수 컬럼 주입 테스트로 실증. 1-6 감사가 재확인.
 - **AD-11**: `features.py`는 `customer_value(df)`만 소비하고 `Total_Trans_Amt`를 명명하지
   않음. `find_value_recomputation_violations` scanned 10→11, 위반 0. 가드 무수정.
 - **구조 가드 전종 green**: lane·layering·pipeline-shape·stateful-common·config·AD-11 모두 0 위반.
   커버리지 리포트 자동 재생성(pipeline shape 2 scanned, AD-11 11 scanned).
-- **테스트**: 99 → **119 passed** (+20: features 13, is_output_stale 7), 회귀 0.
+- **테스트**: 99 → 119 → **128 passed** (외부 리뷰 8건 패치 반영), 회귀 0.
 
 ### File List
 
@@ -242,16 +242,59 @@ F·M을 **반의존(anti-correlated)**으로 배치한 판별 테스트(`test_fr
 - `crm/common/freshness.py` — UPDATE, `is_output_stale()` 추가 + DQ2 docstring 정정
 - `crm/common/atomic.py` — UPDATE, `write_parquet_with_meta()` 헬퍼(lambda를 crm으로 내림)
 - `crm/config.py` — UPDATE, `RFM_QUANTILES=5`(선험 규약 상수)
-- `tests/segment/test_features.py` — NEW, 행동 기반 13건(oracle·판별·결정론 포함)
-- `tests/common/test_freshness.py` — UPDATE, `is_output_stale` 7건 추가
-- `docs/implementation-artifacts/rfm-proxy-report-1-3.md` — NEW, 세션 리포트
+- `tests/segment/test_features.py` — NEW, 행동 기반(축별 oracle·qcut 갭·순서불변·실누수명 포함)
+- `tests/common/test_freshness.py` — UPDATE, `is_output_stale` 11건(config drift·stage·empty 포함)
+- `docs/implementation-artifacts/rfm-proxy-report-1-3.md` — NEW, 세션 리포트(DQ2 한계 정정)
+- `docs/implementation-artifacts/deferred-work.md` — UPDATE, 전이적 staleness·코드지문 미해결 기록
 - `docs/implementation-artifacts/structure-guard-coverage.md` — UPDATE, pytest 재생성
 - `docs/implementation-artifacts/1-3-rfm-proxy-features.md` — UPDATE, 본 기록
 - `docs/implementation-artifacts/sprint-status.yaml` — UPDATE, 상태 전이
+
+## Senior Developer Review (외부 GPT, 2026-07-21)
+
+**판정: Changes Requested** — High 2, Medium 4, Low 2. **8건 전부 실증 재현 후 처리**(반려 0).
+AD-11 배선·pipeline-shape·게이트 순서는 통과 확인받음.
+
+### 실증 확인 (패치 전)
+
+| # | 심각도 | 주장 | 실증 |
+|---|---|---|---|
+| 1 | High | `is_output_stale`가 출력 meta의 `config_hash`·stage 미검사 → 거짓 fresh | ✅ config drift·stage 불일치 둘 다 `False`(fresh) 반환 |
+| 2 | High | "DQ2 CLOSED"·05-only 차단 주장이 전이적 staleness에 대해 거짓 | ✅ 코드상 직접 입력만 봄 — 성립 |
+| 3 | Med | `qcut(duplicates="drop")` code가 비연속 → 점수 갭·전부동일 0점·NaN 초과점 | ✅ `[0,0,1,1,2,2]`→`[1,1,1,1,3,3]`(2 누락), 전부동일→0, NaN 반전→6 |
+| 4 | Med | 하드코딩 oracle이 M축만 고정 → R clip 변이 생존 | ✅ R clip upper=3 SURVIVED |
+| 5 | Med | 결정론 테스트가 행 순서 무관(AD-7) 미검증 | ✅ 동일순서 반복만 확인 |
+| 6 | Med | AC5 테스트가 실컬럼명이 아닌 축약 가짜명 사용 | ✅ 표적 재부착 변이 미탐 |
+| 7 | Low | unreadable meta에 `OSError` 미포함(문서와 불일치) | ✅ 권한/락은 crash |
+| 8 | Low | `inputs=={}`+빈 입력을 fresh 판정 | ✅ 네트워크 stage 재사용 시 영구 fresh |
+
+### 적용한 패치
+
+- **[High-1]** `is_output_stale(output, inputs, *, expected_stage)`로 시그니처 변경 — 출력 meta의
+  `stage == expected_stage` + `config_hash == config_hash()`를 cache key에 추가. RFM_QUANTILES
+  변경 후 상위 meta 갱신 시나리오가 이제 stale 판정(실증 재확인 True). 02_features 배선 갱신.
+- **[High-2]** "DQ2 CLOSED"·"canonical scenario blocked" 문구 **삭제**, freshness.py docstring·
+  리포트를 "직접 입력 드리프트만 해소"로 정정. 전이적 staleness·순수 코드변경을 deferred-work에
+  근거와 함께 기록(오케스트레이터 DAG 검증은 05 생기는 스토리 소관).
+- **[Med-3]** 살아남은 code를 **dense-rank**해 갭 제거, 전부동일→단일버킷(1점), **NaN 거부**(fail-fast),
+  `quantiles>=2` 검증, 빈 프레임 안전. "no gaps regardless" 거짓 주석 정정.
+- **[Med-4]** R·F·M **축별 exact oracle** 추가(`[5,4,3,2,1]`/`[1,2,3,4,5]`/`[1,2,3,4,5]`) — R clip·
+  F clip·경계 off-by-one 변이 전부 KILLED 재확인.
+- **[Med-5]** `random_state` 셔플 후 CLIENTNUM 정렬 비교로 **행 순서 불변** 직접 검증(동률 다수 fixture).
+- **[Med-6]** 실제 누수 컬럼명 2개 전체를 fixture에 사용 + **stage가 쓴 parquet**에도 부재 단언.
+- **[Low-7]** meta read에 `OSError` 포함, 입력 해시 실패도 fail-closed(True).
+- **[Low-8]** 빈 입력은 `ValueError`(소비 stage 전용 계약 명시).
+
+### 패치 후 재검증
+
+- High-1 config drift → stale True 재확인. 생존했던 R clip·경계 변이 전부 KILLED.
+- qcut 엣지 4종(갭·전부동일·NaN·빈) 단위 테스트 통과. 실데이터 R 분포 불변(4버킷 연속).
+- 구조 가드 전종 0 위반. **119 → 128 passed**, 회귀 0.
 
 ## Change Log
 
 | 날짜 | 변경 |
 |---|---|
 | 2026-07-21 | 스토리 1-3 create-story: RFM 프록시 + M축 AD-11 배선(customer_value 소비) + DQ2 is_output_stale + 누수 배제. Status → ready-for-dev. 기준선 99 passed |
-| 2026-07-21 | 스토리 1-3 구현: features.py(RFM 프록시)·02_features(2단 게이트)·is_output_stale(DQ2 해소)·누수 배제·분위수 리포트. 변이테스트로 F/M 소스혼동 생존→판별테스트 추가. 99 → 119 passed, 회귀 0. Status → review |
+| 2026-07-21 | 스토리 1-3 구현: features.py(RFM 프록시)·02_features(2단 게이트)·is_output_stale·누수 배제·분위수 리포트. 99 → 119 passed, 회귀 0. Status → review |
+| 2026-07-21 | 외부 GPT 리뷰 8건 처리(High 2·Med 4·Low 2): High-1 config/stage cache key·High-2 과잉주장 정정+defer·Med-3 qcut dense-rank/엣지·Med-4 축별 oracle·Med-5 순서불변·Med-6 실누수명·Low-7 OSError·Low-8 빈입력. 119 → 128 passed, 회귀 0 |

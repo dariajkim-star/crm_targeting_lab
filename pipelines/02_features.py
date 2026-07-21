@@ -27,7 +27,7 @@ from crm.segment.features import compute_rfm_features  # noqa: E402
 def main(input_paths: list[Path], output_paths: list[Path]) -> None:
     (source,), (out,) = input_paths, output_paths
     verify_inputs([source], expected_stage="01_download")
-    if not is_output_stale(out, [source]):
+    if not is_output_stale(out, [source], expected_stage="02_features"):
         logging.info("02_features: %s is fresh, skipping", out.name)
         return
     features = compute_rfm_features(pd.read_parquet(source))

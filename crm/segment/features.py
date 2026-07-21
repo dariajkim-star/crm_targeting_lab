@@ -68,23 +68,48 @@ RFM_OUTPUT_COLUMNS = (
 
 
 def _quantile_score(series: pd.Series, quantiles: int, invert: bool) -> pd.Series:
-    """Bucket ``series`` into quantile scores 1..k (k = achieved bucket count).
+    """Bucket ``series`` into DENSE quantile scores 1..k (k = distinct buckets).
 
     Deterministic: ``pd.qcut`` on a fixed distribution always draws the same
     edges (AD-7). ``duplicates="drop"`` means a degenerate distribution yields
-    FEWER than ``quantiles`` buckets instead of raising - the caller documents
-    the achieved resolution rather than pretending five clean quintiles exist.
+    FEWER than ``quantiles`` buckets instead of raising.
 
-    ``invert`` flips the ranking within the achieved range (for recency, where a
-    smaller raw value means a higher score).
+    Why dense-rank the codes (review Med-3). ``cat.codes`` is NOT contiguous
+    after ``duplicates="drop"``: e.g. values [0,0,1,1,2,2] over 5 quantiles yield
+    codes [0,0,0,0,2,2] - code 1 is dropped but 2 survives, so a naive ``code+1``
+    produces scores {1,3} with a hole at 2. Remapping the surviving codes to a
+    gapless 0..k-1 rank makes scores genuinely 1..k with no gaps, which is what
+    the invert reflection below assumes.
+
+    Edge policy (all fail-fast rather than emit a nonsense score):
+      - missing values are rejected: a NaN falls in no bucket (code -1) and would
+        silently score 0, or under invert score k+1 ABOVE the real maximum. RFM
+        proxies must be complete, so this raises instead.
+      - a single distinct value puts everyone in one bucket -> score 1.
+      - an empty frame returns an empty score (nothing to bucket).
     """
-    # cat.codes is 0-based in ascending value order; +1 makes scores 1-based.
+    if quantiles < 2:
+        raise ValueError(f"quantiles must be >= 2 to form buckets, got {quantiles}")
+    if series.isna().any():
+        raise ValueError(
+            "RFM proxy source has missing values - a NaN belongs to no quantile "
+            "bucket and would score outside the 1..k range. Clean upstream."
+        )
+    if len(series) == 0:
+        return pd.Series([], dtype=int, index=series.index)
+
     codes = pd.qcut(series, quantiles, duplicates="drop").cat.codes
-    scores = codes + 1
+    if (codes < 0).all():
+        # One distinct value: qcut drops every edge and codes are all -1. That is
+        # a single bucket, not "no data" - everyone scores 1.
+        dense = pd.Series(0, index=series.index)
+    else:
+        # Remap surviving codes to a gapless 0..k-1 in ascending value order.
+        order = {code: rank for rank, code in enumerate(sorted(c for c in codes.unique() if c >= 0))}
+        dense = codes.map(order)
+    scores = dense + 1
     if invert:
-        # Reflect within the achieved bucket count so scores stay 1..k with no
-        # gaps regardless of how many buckets survived the duplicate drop.
-        achieved = int(codes.max()) + 1
+        achieved = int(dense.max()) + 1
         scores = (achieved + 1) - scores
     return scores.astype(int)
 

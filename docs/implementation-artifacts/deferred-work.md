@@ -15,6 +15,22 @@
 - **kagglehub 로컬 캐시 재사용** — 업스트림 데이터가 갱신돼도 캐시가 있으면 재다운로드하지 않아 stale 데이터가 "신선" 판정될 수 있다. `force_download` 파라미터 노출이나 캐시 무효화 절차 문서화가 필요하다. 두 데이터셋 모두 고정 스냅샷 성격이라 당장은 위험이 낮다.
 - **(새 output + 옛 meta) 창** — `write_with_meta`는 output rename 직후·meta 쓰기 직전 구간에서 옛 meta와 새 output이 공존한다. 단일 프로세스 배치 실행 envelope에서는 이 창을 관측할 동시 실행이 없어 실해악이 낮다.
 
+## Deferred from: code review of 1-3-rfm-proxy-features (2026-07-21, 외부 GPT 리뷰)
+
+- **전이적(transitive) staleness — downstream-only 재실행 미방지 (리뷰 High-2)**: `is_output_stale`은
+  소비 stage의 **직접** 입력 드리프트(+자기 config·stage)만 본다. 입력 artifact가 바이트
+  동일하지만 그 artifact의 **원천**이 그 사이 바뀌었고 하위 stage만 재실행되면
+  탐지하지 못한다(예: `bankchurners` v2로 바뀌었는데 02는 안 돌리고 05만 → 05의 직접 입력
+  `features`는 v1 그대로라 fresh). 진짜 해결은 **오케스트레이터 레벨 DAG 위상 검증** 또는
+  입력 meta를 따라 올라가는 **재귀 의존성 검증**이며, 파이프라인에 05·오케스트레이터가
+  생기는 스토리(3-x/4-x)의 소관이다. 1-3의 docstring·리포트는 이 한계를 명시하도록 정정했다.
+- **코드 변경(config 무변) 미탐지 (리뷰 High-1 잔여)**: `config_hash`는 `config.py` 바이트만
+  본다(AD-13 규약). stage 코드(`features.py`)만 바뀌고 config를 안 건드리면 산출물이 stale로
+  잡히지 않는다. stage 코드 지문(모듈 해시)을 cache key에 넣는 것은 **모든 stage에 적용되는
+  아키텍처 변경**이라 스토리 패치가 아니라 AD-13 개정 사안이다. 도입 시 `code_commit`이 "context
+  only, never a gate"라는 현 규약과의 정합을 함께 정리할 것. 현재는 config drift + producer/stage
+  검사로 실증된 거짓-fresh는 닫았고, 순수 코드 변경은 알고 감수한 한계로 문서화했다.
+
 ## Deferred from: code review of 1-2-customer-value-single-definition (2026-07-20)
 
 - ~~**미결 결정 — AD-11 가드의 범위(외부 리뷰 M2)**~~ — **해소(2026-07-20, A안 채택)**: 사용자 결정으로 **"이름 자체를 `value.py`가 소유"**로 확정. **SPEC CAP-5(2차 개정)·ARCHITECTURE-SPINE AD-11에 소급 반영 완료**, 가드는 코드 변경 없이 그대로 유지. 채택 근거: ①B안("데이터 접근 문맥만 금지")은 `df[X]`의 X가 가치 축인지 정적분석으로 판별 불가라 결국 경로 화이트리스트로 근사하게 되고, **가드가 복잡해질수록 이번 리뷰처럼 옆문이 생긴다** ②아래 오탐 사례는 **현 트리에 하나도 실재하지 않는다** — 가정을 위해 실재하는 가드를 약화시키는 건 순서가 거꾸로 ③A안은 코드 변경 0(문구만 개정), B안은 체커 재작성+픽스처 재설계. **감수하는 비용**: 1-3 이후 실소비자가 스키마에서 컬럼명이 필요해질 수 있다. 그때 우선순위는 (1) 가치 축 컬럼을 피처 스키마에서 제외 (2) `value.py`가 좁은 스키마 API 노출 (3) 실사례를 근거로 B안 재검토. 원래 지적된 오탐 사례:
