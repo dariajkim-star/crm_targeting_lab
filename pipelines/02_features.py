@@ -21,7 +21,7 @@ import pandas as pd  # noqa: E402
 from crm import config  # noqa: E402
 from crm.common.atomic import write_parquet_with_meta  # noqa: E402
 from crm.common.freshness import build_meta, is_output_stale, verify_inputs  # noqa: E402
-from crm.segment.features import compute_rfm_features  # noqa: E402
+from crm.segment.segments import build_feature_table  # noqa: E402
 
 
 def main(input_paths: list[Path], output_paths: list[Path]) -> None:
@@ -30,7 +30,7 @@ def main(input_paths: list[Path], output_paths: list[Path]) -> None:
     if not is_output_stale(out, [source], expected_stage="02_features"):
         logging.info("02_features: %s is fresh, skipping", out.name)
         return
-    features = compute_rfm_features(pd.read_parquet(source))
+    features = build_feature_table(pd.read_parquet(source))
     write_parquet_with_meta(out, features, build_meta("02_features", [source], rows=len(features)))
     logging.info("02_features: %s rows=%d", out.name, len(features))
 

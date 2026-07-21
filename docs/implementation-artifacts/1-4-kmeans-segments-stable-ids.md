@@ -5,7 +5,7 @@ baseline_passed: 133
 
 # Story 1.4: K-means 세그먼트와 안정 ID
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -35,39 +35,39 @@ so that 리포트의 "세그먼트 3"이 조용히 다른 집단을 가리키는
 
 ## Tasks / Subtasks
 
-- [ ] **T0. scikit-learn 설치** (AC: 1) ← **착수 전 필수, 이 스토리가 첫 설치 스토리**
-  - [ ] `requirements.txt` 24행 `# scikit-learn>=1.9,<2.0` **주석 해제**(README INSTALL POLICY: "처음 필요로 하는 스토리가 설치"). 설치: `.venv/Scripts/python.exe -m pip install -r requirements.txt`.
-  - [ ] 설치된 실제 버전을 Dev Notes·리포트에 기록. **sklearn 1.4+부터 `KMeans`의 `n_init` 기본값이 `"auto"`** — AD-7이 명시 주입을 요구하므로 `n_init`를 절대 기본값에 맡기지 말 것.
-- [ ] **T1. K-means 세그멘테이션 순수 모듈 `crm/segment/segments.py`** (AC: 1, 2, 3) ← 로직 소유
-  - [ ] `assign_segments(features: pd.DataFrame, k: int = SEGMENT_K, seed: int = RANDOM_SEED) -> pd.Series` — `segment_id`(1..k) 반환, features 인덱스 보존. 순수 함수(입력 불변·파일 미기록·전역 상태 없음, 1-2/1-3 규약 계승).
-  - [ ] **클러스터링 입력**: RFM **원척도 프록시**(`recency_proxy`·`frequency_proxy`·`monetary_proxy`)를 `StandardScaler`로 표준화해 사용(monetary가 수천 단위라 스케일링 없으면 거리 지배). 스케일링은 세그멘테이션 **내부**에서만 — 이건 가치 축 정규화(AD-11 금지)가 아니라 클러스터링 전처리다. 선택(원척도 vs R/F/M 점수)과 근거를 리포트에 기록. **점수(1..5)는 R이 4레벨로 거칠어** 원척도 표준화를 권고.
-  - [ ] **결정론(AD-7)**: `KMeans(n_clusters=k, random_state=seed, n_init=<고정값, 예: 10>)`. `n_init`·`random_state` 둘 다 명시. `StandardScaler`는 결정론적.
-  - [ ] **🚨 안정 ID (AC2 핵심)**: 원시 KMeans 라벨을 그대로 쓰지 말 것. 각 클러스터의 **`customer_value` 중앙값 내림차순**으로 재정렬해 `segment_id` 1..k(1=최고가치) 부여. **`customer_value`는 `monetary_proxy` 컬럼을 소비**한다 — 이 컬럼은 1-3이 `customer_value(df)` 출력을 그대로 저장한 것이라 **소비이지 재계산이 아니다**(AD-11 준수, `Total_Trans_Amt`를 명명하지 않음). 중앙값 동점 시 결정론적 tiebreak을 명시(예: 평균 내림차순 → 원시 라벨 오름차순)하고 리포트·docstring에 고정.
-- [ ] **T2. k 선정 분석 + `SEGMENT_K` config 등재** (AC: 1)
-  - [ ] elbow(inertia)·실루엣을 k 범위(예: 2..10)에서 산출하는 **세션 분석**(파이프라인 단계 아님 — M2/M3 패턴: 곡선은 리포트, 공식 수치의 자리는 산출 파이프라인·마트). seed 고정.
-  - [ ] 선택한 k를 `crm/config.py`에 `SEGMENT_K: int` 상수로 등재, `# source:` 주석에 **1-4 elbow/실루엣에서 선택**임을 명기. **AD-1 판단 주의**: k는 fitted threshold가 아니라 분석가가 곡선을 보고 고른 하이퍼파라미터이며(‖ `RFM_QUANTILES` 선례‖) BankChurners 레인 안에 머문다. 다른 레인에 재사용하지 않는다.
-  - [ ] `SEGMENT_K` 추가로 `config_hash`가 바뀐다 → 기존 `bankchurners.parquet.meta.json`이 stale가 되어 **01 재실행 후 02 재실행**이 필요(1-3에서 `RFM_QUANTILES` 추가 때 겪은 것과 동일, AD-13 over-invalidation). Debug Log에 기록.
-- [ ] **T3. 02_features stage 확장** (AC: 2, 3) — 세그먼트를 산출물에 추가
-  - [ ] `features = compute_rfm_features(df)` 다음에 `segment_id`를 붙여 쓴다(`features.assign(segment_id=assign_segments(features))`). RFM 계산은 1-3 그대로 재사용, 재발명 금지.
-  - [ ] **40행 예산 주의**: 현재 `02_features.py`는 정확히 40행이다(`find_pipeline_shape_violations` 강제). import 1줄 + assign 1줄을 넣으면 초과하므로 docstring을 줄이거나, `crm.segment`가 RFM+세그먼트를 함께 반환하는 얇은 조립 함수를 노출하는 방안 중 택일. `main` 외 `def`/lambda 금지 규칙은 그대로.
-  - [ ] 출력 스키마 확장: 산출물 컬럼 = `RFM_OUTPUT_COLUMNS + ("segment_id",)`. 상수로 고정(예: `FEATURE_TABLE_COLUMNS`)해 downstream(1-5)이 계약으로 참조.
-- [ ] **T4. 1-3 스테이지 출력 테스트 회귀 갱신** (AC: 2) ← **놓치면 회귀**
-  - [ ] `tests/segment/test_features.py::test_leakage_columns_absent_from_real_stage_output`는 **stage가 쓴 parquet 컬럼 == `RFM_OUTPUT_COLUMNS`**를 단언한다. 이제 `segment_id`가 추가되므로 이 단언이 깨진다. 새 계약(`FEATURE_TABLE_COLUMNS`)으로 갱신하되 **누수 컬럼 부재 단언은 유지**. (누수 배제는 여전히 필수다.)
-- [ ] **T5. 행동 기반 테스트** (AC: 1, 2, 3) — `tests/segment/test_segments.py`
-  - [ ] **동어반복 금지**(1-3 교훈): KMeans를 재구현해 비교하지 말 것. 성질로 검증.
-  - [ ] **안정 ID 가치 순서**(AC2): `segment_id` 1의 `monetary_proxy` 중앙값 ≥ segment 2 ≥ ... ≥ k. **합성 데이터로 명확한 가치 계층**(잘 분리된 3~4개 덩어리)을 만들어 segment 1이 최고가치 덩어리에 대응함을 단언. 원시 KMeans 라벨 순서와 무관함을 보여라.
-  - [ ] **결정론(AC3/NFR4)**: 같은 입력 2회 `assign_segments` → `segment_id` 완전 동일. **행 순서 셔플 불변**도 검증(1-3 2차 리뷰 Med-5 교훈: 같은 순서 반복만으론 부족).
-  - [ ] **seed 주입 실증(AC1)**: 다른 seed를 주면 (일반적으로) 다른 군집이 나오되, 같은 seed는 항상 동일 — seed가 실제로 배선됐음을 행동으로 확인.
-  - [ ] **tiebreak 결정론**: 중앙값 동점 클러스터가 있는 합성 케이스에서 segment_id 배정이 재실행에 고정됨을 단언.
-  - [ ] k 범위 밖(예: k > 표본 수, k < 2) 등 방어 정책을 정하고 테스트.
-- [ ] **T6. 세그먼트 리포트** (AC: 1) — `docs/implementation-artifacts/segment-report-1-4.md`
-  - [ ] elbow·실루엣 **수치 표**(k별 inertia·silhouette), 선택 k와 **근거**. 통화·단위 기호 금지(NFR3).
-  - [ ] `segment_id` → 가치 계층 매핑 표(각 segment의 크기·`monetary_proxy` 중앙값·R/F/M 프로파일 요약). "segment 1 = 최고가치"가 재실행에 고정됨을 명시(AD-7).
-  - [ ] 클러스터링 입력 선택(원척도 표준화)과 tiebreak 규칙을 명문화.
-- [ ] **T7. 실행·커밋**
-  - [ ] 실데이터로 02_features 재실행(01 재실행 선행) → `features_customers.parquet`에 `segment_id` 생김 확인, 세그먼트 크기·가치순 재현.
-  - [ ] **AD-7 수용 기준**: 02_features 2회 연속 실행 후 산출 parquet이 **바이트 동일**(또는 segment_id 완전 동일)임을 확인.
-  - [ ] `pytest` 전체 green. **현 기준선 133 passed, 회귀 0.** 스토리 단위 커밋. Obsidian 미러 갱신.
+- [x] **T0. scikit-learn 설치** (AC: 1) ← **착수 전 필수, 이 스토리가 첫 설치 스토리**
+  - [x] `requirements.txt` 24행 `# scikit-learn>=1.9,<2.0` **주석 해제**(README INSTALL POLICY: "처음 필요로 하는 스토리가 설치"). 설치: `.venv/Scripts/python.exe -m pip install -r requirements.txt`.
+  - [x] 설치된 실제 버전을 Dev Notes·리포트에 기록. **sklearn 1.4+부터 `KMeans`의 `n_init` 기본값이 `"auto"`** — AD-7이 명시 주입을 요구하므로 `n_init`를 절대 기본값에 맡기지 말 것.
+- [x] **T1. K-means 세그멘테이션 순수 모듈 `crm/segment/segments.py`** (AC: 1, 2, 3) ← 로직 소유
+  - [x] `assign_segments(features: pd.DataFrame, k: int = SEGMENT_K, seed: int = RANDOM_SEED) -> pd.Series` — `segment_id`(1..k) 반환, features 인덱스 보존. 순수 함수(입력 불변·파일 미기록·전역 상태 없음, 1-2/1-3 규약 계승).
+  - [x] **클러스터링 입력**: RFM **원척도 프록시**(`recency_proxy`·`frequency_proxy`·`monetary_proxy`)를 `StandardScaler`로 표준화해 사용(monetary가 수천 단위라 스케일링 없으면 거리 지배). 스케일링은 세그멘테이션 **내부**에서만 — 이건 가치 축 정규화(AD-11 금지)가 아니라 클러스터링 전처리다. 선택(원척도 vs R/F/M 점수)과 근거를 리포트에 기록. **점수(1..5)는 R이 4레벨로 거칠어** 원척도 표준화를 권고.
+  - [x] **결정론(AD-7)**: `KMeans(n_clusters=k, random_state=seed, n_init=<고정값, 예: 10>)`. `n_init`·`random_state` 둘 다 명시. `StandardScaler`는 결정론적.
+  - [x] **🚨 안정 ID (AC2 핵심)**: 원시 KMeans 라벨을 그대로 쓰지 말 것. 각 클러스터의 **`customer_value` 중앙값 내림차순**으로 재정렬해 `segment_id` 1..k(1=최고가치) 부여. **`customer_value`는 `monetary_proxy` 컬럼을 소비**한다 — 이 컬럼은 1-3이 `customer_value(df)` 출력을 그대로 저장한 것이라 **소비이지 재계산이 아니다**(AD-11 준수, `Total_Trans_Amt`를 명명하지 않음). 중앙값 동점 시 결정론적 tiebreak을 명시(예: 평균 내림차순 → 원시 라벨 오름차순)하고 리포트·docstring에 고정.
+- [x] **T2. k 선정 분석 + `SEGMENT_K` config 등재** (AC: 1)
+  - [x] elbow(inertia)·실루엣을 k 범위(예: 2..10)에서 산출하는 **세션 분석**(파이프라인 단계 아님 — M2/M3 패턴: 곡선은 리포트, 공식 수치의 자리는 산출 파이프라인·마트). seed 고정.
+  - [x] 선택한 k를 `crm/config.py`에 `SEGMENT_K: int` 상수로 등재, `# source:` 주석에 **1-4 elbow/실루엣에서 선택**임을 명기. **AD-1 판단 주의**: k는 fitted threshold가 아니라 분석가가 곡선을 보고 고른 하이퍼파라미터이며(‖ `RFM_QUANTILES` 선례‖) BankChurners 레인 안에 머문다. 다른 레인에 재사용하지 않는다.
+  - [x] `SEGMENT_K` 추가로 `config_hash`가 바뀐다 → 기존 `bankchurners.parquet.meta.json`이 stale가 되어 **01 재실행 후 02 재실행**이 필요(1-3에서 `RFM_QUANTILES` 추가 때 겪은 것과 동일, AD-13 over-invalidation). Debug Log에 기록.
+- [x] **T3. 02_features stage 확장** (AC: 2, 3) — 세그먼트를 산출물에 추가
+  - [x] `features = compute_rfm_features(df)` 다음에 `segment_id`를 붙여 쓴다(`features.assign(segment_id=assign_segments(features))`). RFM 계산은 1-3 그대로 재사용, 재발명 금지.
+  - [x] **40행 예산 주의**: 현재 `02_features.py`는 정확히 40행이다(`find_pipeline_shape_violations` 강제). import 1줄 + assign 1줄을 넣으면 초과하므로 docstring을 줄이거나, `crm.segment`가 RFM+세그먼트를 함께 반환하는 얇은 조립 함수를 노출하는 방안 중 택일. `main` 외 `def`/lambda 금지 규칙은 그대로.
+  - [x] 출력 스키마 확장: 산출물 컬럼 = `RFM_OUTPUT_COLUMNS + ("segment_id",)`. 상수로 고정(예: `FEATURE_TABLE_COLUMNS`)해 downstream(1-5)이 계약으로 참조.
+- [x] **T4. 1-3 스테이지 출력 테스트 회귀 갱신** (AC: 2) ← **놓치면 회귀**
+  - [x] `tests/segment/test_features.py::test_leakage_columns_absent_from_real_stage_output`는 **stage가 쓴 parquet 컬럼 == `RFM_OUTPUT_COLUMNS`**를 단언한다. 이제 `segment_id`가 추가되므로 이 단언이 깨진다. 새 계약(`FEATURE_TABLE_COLUMNS`)으로 갱신하되 **누수 컬럼 부재 단언은 유지**. (누수 배제는 여전히 필수다.)
+- [x] **T5. 행동 기반 테스트** (AC: 1, 2, 3) — `tests/segment/test_segments.py`
+  - [x] **동어반복 금지**(1-3 교훈): KMeans를 재구현해 비교하지 말 것. 성질로 검증.
+  - [x] **안정 ID 가치 순서**(AC2): `segment_id` 1의 `monetary_proxy` 중앙값 ≥ segment 2 ≥ ... ≥ k. **합성 데이터로 명확한 가치 계층**(잘 분리된 3~4개 덩어리)을 만들어 segment 1이 최고가치 덩어리에 대응함을 단언. 원시 KMeans 라벨 순서와 무관함을 보여라.
+  - [x] **결정론(AC3/NFR4)**: 같은 입력 2회 `assign_segments` → `segment_id` 완전 동일. **행 순서 셔플 불변**도 검증(1-3 2차 리뷰 Med-5 교훈: 같은 순서 반복만으론 부족).
+  - [x] **seed 주입 실증(AC1)**: 다른 seed를 주면 (일반적으로) 다른 군집이 나오되, 같은 seed는 항상 동일 — seed가 실제로 배선됐음을 행동으로 확인.
+  - [x] **tiebreak 결정론**: 중앙값 동점 클러스터가 있는 합성 케이스에서 segment_id 배정이 재실행에 고정됨을 단언.
+  - [x] k 범위 밖(예: k > 표본 수, k < 2) 등 방어 정책을 정하고 테스트.
+- [x] **T6. 세그먼트 리포트** (AC: 1) — `docs/implementation-artifacts/segment-report-1-4.md`
+  - [x] elbow·실루엣 **수치 표**(k별 inertia·silhouette), 선택 k와 **근거**. 통화·단위 기호 금지(NFR3).
+  - [x] `segment_id` → 가치 계층 매핑 표(각 segment의 크기·`monetary_proxy` 중앙값·R/F/M 프로파일 요약). "segment 1 = 최고가치"가 재실행에 고정됨을 명시(AD-7).
+  - [x] 클러스터링 입력 선택(원척도 표준화)과 tiebreak 규칙을 명문화.
+- [x] **T7. 실행·커밋**
+  - [x] 실데이터로 02_features 재실행(01 재실행 선행) → `features_customers.parquet`에 `segment_id` 생김 확인, 세그먼트 크기·가치순 재현.
+  - [x] **AD-7 수용 기준**: 02_features 2회 연속 실행 후 산출 parquet이 **바이트 동일**(또는 segment_id 완전 동일)임을 확인.
+  - [x] `pytest` 전체 green. **현 기준선 133 passed, 회귀 0.** 스토리 단위 커밋. Obsidian 미러 갱신.
 
 ## Dev Notes
 
@@ -173,14 +173,69 @@ docs/implementation-artifacts/segment-report-1-4.md   # NEW - elbow/실루엣·k
 
 ### Agent Model Used
 
+claude-opus-4-8 (bmad-dev-story)
+
 ### Debug Log References
+
+**기준선**: HEAD `34b10dc`, 133 passed.
+
+**scikit-learn 설치**: 미설치 확인 → `requirements.txt:24` 주석 해제 → 설치. 실제 버전
+**scikit-learn 1.9.0**(+ scipy 1.18.0, joblib 1.5.3, threadpoolctl). `n_init=10` 명시 주입
+(1.9는 기본값 `"auto"` — AD-7 위반 방지).
+
+**config drift(예상된 것)**: `SEGMENT_K` 추가로 `config_hash` 변경 → 기존 `bankchurners.meta.json`
+stale → `verify_inputs` 실패. 1-3 `RFM_QUANTILES` 때와 동일. 01 재실행 후 02 통과(AD-13 설계대로).
+
+**🚨 셔플 불변 초기 실패 → 수정**: 첫 구현은 caller의 행 순서 그대로 KMeans에 넣었다. 실측 결과
+**셔플 후 고객별 segment_id가 달라졌다**(KMeans는 k-means++ 초기화가 데이터 순서에 민감).
+파이프라인은 고정 순서로 읽어 AD-7 "2회 바이트 동일"은 지키지만, 1-3 Med-5 교훈대로 행 순서
+불변을 보장하려면 부족. **클러스터링 전 `CLIENTNUM` 정규 정렬 → fit → 원 인덱스로 복원**으로
+수정. 재검증 셔플 불변 True.
+
+**테스트 검출력(변이)**: 원시라벨 사용·가치순 반전 변이는 즉시 KILLED. 그러나 **"정규 정렬 제거"
+변이가 잘 분리된 tier fixture에선 생존**(순서 무관하게 수렴) — 1-3 Med-5의 재현. 불변 테스트를
+**fuzzy(비분리) fixture**로 교체하니 KILLED. 성질 테스트는 fixture가 현상을 실제로 유발해야
+검출력이 생긴다.
+
+**실데이터 실행**(n=10,127, k=4):
+```
+segment sizes {1:770, 2:3329, 3:2777, 4:3251}
+median monetary 14621 / 4350 / 4312 / 1774 (단조 내림차순 확인)
+silhouette(k=4)=0.4119 ; 02_features 2회 연속 실행 데이터 동일 True
+```
 
 ### Completion Notes List
 
+- **AC1 충족**: `KMeans(random_state=RANDOM_SEED, n_init=10)` 명시 주입. elbow/실루엣 표(k=2..10)와
+  k=4 선정 근거를 `segment-report-1-4.md`에 기재(elbow는 k=4, 실루엣 최고 k=2는 고/저 2분할이라
+  다운스트림 무용 → 채택 안 함). `SEGMENT_K=4`를 config에 등재(분석가 선택 하이퍼파라미터, AD-1 주의 명시).
+- **AC2 충족**: 원시 라벨을 `monetary_proxy`(= 저장된 `customer_value` 출력) 중앙값 내림차순으로
+  재정렬해 `segment_id` 1..4(1=최고가치). `customer_value` **소비**만 하고 재계산·`Total_Trans_Amt`
+  명명 없음 → AD-11 가드 위반 0. 동점 tiebreak은 중앙값→평균→원시라벨 전순서.
+- **AC3 충족(NFR4)**: 2회 실행 동일 + **행 순서 셔플 불변**(정규 정렬로 보장) + tiebreak 결정론 테스트.
+  02_features 2회 실행 산출 데이터 동일 실증.
+- **파이프라인**: 새 단계 없이 02_features 확장. `crm.segment.segments.build_feature_table`이 RFM+세그먼트를
+  조립하고 stage는 한 함수만 호출(40행 유지, AD-9). 출력 계약 `FEATURE_TABLE_COLUMNS`(RFM + segment_id).
+- **T4 회귀 갱신**: 1-3 stage 출력 테스트를 `FEATURE_TABLE_COLUMNS` 계약으로 갱신, 누수 배제 단언 유지.
+- **구조 가드 전종 green**(lane·layering·pipeline-shape·AD-11·stateful-common). 커버리지 리포트 재생성.
+- **테스트**: 133 → **144 passed** (+11: segments 11), 회귀 0.
+
 ### File List
+
+- `crm/segment/segments.py` — NEW, K-means + 가치순 안정 ID + build_feature_table(순수)
+- `crm/config.py` — UPDATE, `SEGMENT_K=4`(1-4 곡선서 선택)
+- `pipelines/02_features.py` — UPDATE, build_feature_table 호출로 segment_id 산출(40행 유지)
+- `requirements.txt` — UPDATE, scikit-learn 주석 해제(1-4 첫 설치)
+- `tests/segment/test_segments.py` — NEW, 안정ID·결정론·셔플불변·seed·tiebreak
+- `tests/segment/test_features.py` — UPDATE, stage 출력 계약을 FEATURE_TABLE_COLUMNS로
+- `docs/implementation-artifacts/segment-report-1-4.md` — NEW, elbow/실루엣·k근거·가치순 매핑
+- `docs/implementation-artifacts/structure-guard-coverage.md` — UPDATE, pytest 재생성
+- `docs/implementation-artifacts/1-4-kmeans-segments-stable-ids.md` — UPDATE, 본 기록
+- `docs/implementation-artifacts/sprint-status.yaml` — UPDATE, 상태 전이
 
 ## Change Log
 
 | 날짜 | 변경 |
 |---|---|
 | 2026-07-21 | 스토리 1-4 create-story: K-means + 가치순 안정 ID + SEGMENT_K + sklearn 첫 설치 + 02_features 확장. Status → ready-for-dev. 기준선 133 passed |
+| 2026-07-21 | 스토리 1-4 구현: segments.py(K-means+가치순 안정ID)·SEGMENT_K=4·02_features 확장·scikit-learn 1.9.0 설치. 셔플 불변 초기 실패→정규 정렬로 수정, fuzzy fixture로 순서민감 변이 사살. 133 → 144 passed, 회귀 0. Status → review |

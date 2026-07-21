@@ -44,6 +44,14 @@ MARTS_DIR: Path = PROJECT_ROOT / "marts"  # source: 경로규약 (committed; AD-
 # are computed at runtime from the BankChurners frame and never parked here.
 RFM_QUANTILES: int = 5  # source: 규약 (classic RFM quintile convention)
 
+# K-means segment count. A modelling hyperparameter chosen by the analyst from
+# the elbow/silhouette curves in story 1-4 (NOT a fitted threshold): inertia's
+# marginal gain flattens after k=4 (the elbow), and while k=2 scores the highest
+# silhouette it only splits high/low value - too coarse for the downstream 2x2
+# and the 1-5 personas. k=4 balances separation and actionability. Derived from
+# the BankChurners lane only and used only there (AD-1: no cross-lane reuse).
+SEGMENT_K: int = 4  # source: 1-4 elbow/silhouette on BankChurners
+
 # --- Campaign policy assumptions (NFR1: assumptions, not measurements) -------
 # These are NOT estimated from data. They are stated assumptions, and every
 # artifact that uses them must label them as such. Robustness is CAP-7's job

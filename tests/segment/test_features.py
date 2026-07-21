@@ -134,7 +134,11 @@ def test_leakage_columns_absent_from_real_stage_output(tmp_path):
     stage.main([src], [target])
 
     written = pd.read_parquet(target)
-    assert list(written.columns) == list(RFM_OUTPUT_COLUMNS)
+    # Story 1-4 extended the stage output with segment_id (FEATURE_TABLE_COLUMNS).
+    # The leakage-exclusion guarantee (AC5) must still hold on the new contract.
+    from crm.segment.segments import FEATURE_TABLE_COLUMNS
+
+    assert list(written.columns) == list(FEATURE_TABLE_COLUMNS)
     for col in _REAL_LEAK_COLUMNS:
         assert col not in written.columns
 
