@@ -52,6 +52,14 @@ RFM_QUANTILES: int = 5  # source: 규약 (classic RFM quintile convention)
 # the BankChurners lane only and used only there (AD-1: no cross-lane reuse).
 SEGMENT_K: int = 4  # source: 1-4 elbow/silhouette on BankChurners
 
+# --- Churn model conventions (story 1-6a) ------------------------------------
+# Cross-validation fold count for the churn PR-AUC comparison. A convention, not
+# a value derived from data.
+CHURN_CV_FOLDS: int = 5  # source: 규약 (standard 5-fold)
+# XGBoost tree method, PINNED for determinism (AD-7): the histogram method is
+# reproducible when n_jobs=1 and random_state are also fixed. Not a data value.
+CHURN_TREE_METHOD: str = "hist"  # source: 규약 (deterministic with n_jobs=1)
+
 # --- Campaign policy assumptions (NFR1: assumptions, not measurements) -------
 # These are NOT estimated from data. They are stated assumptions, and every
 # artifact that uses them must label them as such. Robustness is CAP-7's job

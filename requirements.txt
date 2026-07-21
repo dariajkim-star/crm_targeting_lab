@@ -22,6 +22,6 @@ kagglehub>=0.3
 
 # --- modelling (declared; installed by the story that first needs it) ---
 scikit-learn>=1.9,<2.0  # installed by story 1-4 (K-means segmentation)
-# xgboost>=3.3,<4.0
+xgboost>=3.3,<4.0  # installed by story 1-6a (churn model)
 # shap>=0.52,<0.53
 # pymc-marketing==0.19.4
