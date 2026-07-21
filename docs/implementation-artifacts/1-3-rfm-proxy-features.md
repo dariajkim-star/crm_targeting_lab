@@ -5,7 +5,7 @@ baseline_passed: 99
 
 # Story 1.3: RFM 프록시 지표 산출
 
-Status: review
+Status: done
 
 ## Story
 
