@@ -274,16 +274,30 @@ def identity_is_consistent(model_path: Path, scored_path: Path) -> bool:
     if not scored_path.exists():
         _LOG.info("identity inconsistent: no scored output at %s", scored_path)
         return False
+    # Deliberately broad: for a freshness GATE, every way of failing to read the
+    # stamp means the same thing - we cannot prove consistency, so recompute. A
+    # narrow tuple leaks whatever the parquet backend happens to raise this
+    # version, and that exception would surface as a crash from a function whose
+    # entire contract is "returns False when unsure".
     try:
         ids = pd.read_parquet(scored_path, columns=[_ID_COLUMN])[_ID_COLUMN].unique()
-    except (OSError, ValueError, KeyError) as err:
+    except Exception as err:  # noqa: BLE001 - see above
         _LOG.info("identity inconsistent: cannot read %s from %s (%s)",
                   _ID_COLUMN, scored_path.name, err)
         return False
     if len(ids) != 1:
         _LOG.info("identity inconsistent: %s carries %d distinct artifact_ids", scored_path.name, len(ids))
         return False
-    if ids[0] != expected:
-        _LOG.info("identity inconsistent: scores carry '%s', model is '%s'", ids[0], expected)
+    stamped = ids[0]
+    # A null or non-string stamp must not reach the comparison: with pandas'
+    # nullable strings `pd.NA != expected` is pd.NA, and returning that makes the
+    # caller's `if` raise "boolean value of NA is ambiguous" - a crash out of a
+    # fail-closed function.
+    if stamped is None or not isinstance(stamped, str) or pd.isna(stamped):
+        _LOG.info("identity inconsistent: %s carries no usable artifact_id (%r)",
+                  scored_path.name, stamped)
+        return False
+    if stamped != expected:
+        _LOG.info("identity inconsistent: scores carry '%s', model is '%s'", stamped, expected)
         return False
     return True

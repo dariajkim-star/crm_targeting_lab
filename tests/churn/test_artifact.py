@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import subprocess
+import sys
 from importlib.metadata import version
 from pathlib import Path
 
@@ -76,14 +79,48 @@ def test_artifact_id_is_identical_for_two_fits_with_the_same_seed_and_data():
     assert first == second
 
 
-def test_artifact_id_changes_with_the_seed():
+def test_artifact_id_is_stable_across_processes(tmp_path):
+    # The CONTRACT is "same bytes -> same id"; what needs locking down is that a
+    # fresh interpreter serialises this model to the same bytes at all. Two fits
+    # inside one pytest process cannot show that (module state, allocator reuse,
+    # a warm import cache all survive), so run it out-of-process.
+    script = tmp_path / "probe.py"
+    script.write_text(
+        "import numpy as np, pandas as pd\n"
+        "from crm.churn.artifact import artifact_id, serialize_model\n"
+        "from crm.churn.model import fit_and_compare\n"
+        "rng = np.random.default_rng(0); n = 200\n"
+        "f = pd.DataFrame({'CLIENTNUM': np.arange(n), 'recency_proxy': rng.integers(0,6,n),\n"
+        "  'frequency_proxy': rng.integers(10,140,n), 'monetary_proxy': rng.uniform(500,18000,n)})\n"
+        "p = 1/(1+np.exp((f['frequency_proxy'].to_numpy()-60)/15))\n"
+        "r = pd.DataFrame({'CLIENTNUM': f['CLIENTNUM'].to_numpy(),\n"
+        "  'Attrition_Flag': np.where(rng.random(n) < p, 'Attrited Customer', 'Existing Customer')})\n"
+        "print(artifact_id(serialize_model(fit_and_compare(f, r).model)))\n",
+        encoding="utf-8",
+    )
+    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2])}
+    runs = [
+        subprocess.run([sys.executable, str(script)], capture_output=True, text=True,
+                       env=env, check=True).stdout.strip()
+        for _ in range(2)
+    ]
+    assert runs[0] == runs[1]
+    assert len(runs[0]) == 64
+
+
+# The two tests below are FIXTURE-BASED REGRESSION checks, not statements of the
+# artifact_id contract. The contract is only "different bytes -> different id";
+# nothing guarantees that a different seed or different data must produce
+# different model bytes (two fits could in principle converge to the same
+# model). They exist to catch an id that stops depending on the model at all.
+def test_a_different_seed_produces_a_different_id_on_this_fixture():
     features, raw = _frames()
     base = artifact_id(serialize_model(fit_and_compare(features, raw, seed=42).model))
     other = artifact_id(serialize_model(fit_and_compare(features, raw, seed=7).model))
     assert base != other
 
 
-def test_artifact_id_changes_when_the_training_data_changes():
+def test_different_training_data_produces_a_different_id_on_this_fixture():
     features, raw = _frames()
     base = artifact_id(serialize_model(fit_and_compare(features, raw).model))
     shifted = features.copy()
@@ -317,6 +354,56 @@ def test_identity_is_consistent_rejects_a_swapped_model(tmp_path):
     assert identity_is_consistent(model_p, scored_p) is True
 
     model_p.write_bytes(serialize_model(fit_and_compare(features, raw, seed=7).model))
+
+    assert identity_is_consistent(model_p, scored_p) is False
+
+
+@pytest.mark.parametrize("stamp", [None, 42])
+def test_identity_is_consistent_returns_false_for_a_null_or_non_string_stamp(tmp_path, stamp):
+    # A fail-closed gate must RETURN False, not raise. With pandas' nullable
+    # strings `pd.NA != expected` evaluates to pd.NA, and the caller's `if` then
+    # raises "boolean value of NA is ambiguous" - a crash out of the one function
+    # whose contract is to answer "cannot prove it" quietly.
+    features, raw = _frames()
+    inputs = _input_files(tmp_path, features, raw)
+    model_p = tmp_path / "churn_model.joblib"
+    scored_p = tmp_path / "churn_scored.parquet"
+    result = fit_and_compare(features, raw)
+    aid = save_model_with_identity(result.model, model_p, inputs=inputs, seed=42, metrics={})
+    scored = attach_artifact_id(result.scored, aid)
+    dtype = "string" if stamp is None else "int64"
+    scored["artifact_id"] = pd.array([stamp] * len(scored), dtype=dtype)
+    scored.to_parquet(scored_p, index=False)
+
+    assert identity_is_consistent(model_p, scored_p) is False
+
+
+def test_identity_is_consistent_returns_false_when_the_scored_file_is_not_parquet(tmp_path):
+    # "Any failure to read the stamp means recompute" - including whatever the
+    # parquet backend raises for a garbage file, which is not in any fixed
+    # exception tuple.
+    features, raw = _frames()
+    inputs = _input_files(tmp_path, features, raw)
+    model_p = tmp_path / "churn_model.joblib"
+    scored_p = tmp_path / "churn_scored.parquet"
+    save_model_with_identity(fit_and_compare(features, raw).model, model_p, inputs=inputs,
+                             seed=42, metrics={})
+    scored_p.write_bytes(b"not a parquet file at all")
+
+    assert identity_is_consistent(model_p, scored_p) is False
+
+
+def test_identity_is_consistent_returns_false_when_the_model_file_is_gone(tmp_path):
+    # The stage happens to check model_out.exists() first; consumers reusing this
+    # helper directly (1-7, 4-x) must not depend on that accident.
+    features, raw = _frames()
+    inputs = _input_files(tmp_path, features, raw)
+    model_p = tmp_path / "churn_model.joblib"
+    scored_p = tmp_path / "churn_scored.parquet"
+    result = fit_and_compare(features, raw)
+    aid = save_model_with_identity(result.model, model_p, inputs=inputs, seed=42, metrics={})
+    attach_artifact_id(result.scored, aid).to_parquet(scored_p, index=False)
+    model_p.unlink()  # record and scores survive and still agree with each other
 
     assert identity_is_consistent(model_p, scored_p) is False
 

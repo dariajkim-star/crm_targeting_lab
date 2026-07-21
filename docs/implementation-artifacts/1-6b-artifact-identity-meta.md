@@ -331,10 +331,55 @@ metrics 기록: baseline 0.4297 / xgb 0.8024 / lift +86.7% / positive_rate 0.160
 - 실데이터 재검증: 디스크 해시 = meta = scored id, seed 42, lift +86.7%(1-6a 불변). 구조 가드 전종 0 위반.
 - **224 → 237 passed**, 회귀 0.
 
+## Senior Developer Review 2차 (외부 GPT, 2026-07-21)
+
+**판정: Request changes** — High 1, Medium 5, Low 3.
+**결과: 6건은 1차에서 이미 반영된 항목(리뷰어가 diff의 pre-image를 현재 코드로 읽음), 3건은 유효한 신규 지적 → 처리.**
+
+### 이미 반영돼 있던 항목 (HEAD 실물 대조)
+
+리뷰가 인용한 코드는 전부 `3acfe8b` **이전** 상태다. `rereview-1-6b.fixes.full.diff`의 `-` 라인(제거된 코드)을
+현재 코드로 읽은 것으로 보인다. HEAD(`5d894c6`) 실물:
+
+| 2차 지적 | HEAD 실물 | 위치 |
+|---|---|---|
+| High-1 모델 바이트 미검증 | `expected = read_verified_model_meta(model_path)[...]` (파일 sha256 검증 포함) | `artifact.py` |
+| Med-1 seed 미주입 | `seed = config.RANDOM_SEED` → `fit_and_compare(..., seed=seed)` + meta | `03_train_churn.py:29-32` |
+| Med-3 `meta_path==target` | `must differ from the output path` 가드 | `atomic.py:102` |
+| Med-4 `save_model` 잔존 | 함수·`__all__` 모두 부재(`grep -c "def save_model(" = 0`) | `artifact.py` |
+| Low-2 id 형식 미검증 | `_ID_PATTERN = re.compile(r"\A[0-9a-f]{64}\Z")` | `artifact.py:84` |
+| Med-2 same run 문구 | 이미 "same model content"로 정정 완료 | docstring·리포트·예외 메시지 |
+
+재현 스크립트로도 재확인: High **False→재실행 복구**, Med-1 **meta 7 = 실제 학습 7**,
+Med-3(=1차 Med-4) **ValueError 거부**, Med-4(=1차 Med-3) **함수 부재**.
+
+### 유효한 신규 지적 (실증 후 처리)
+
+- **[Med-5-2] nullable stamp가 `TypeError`를 던짐** — ✅ **실재 확인**: `artifact_id` 컬럼이 전부 `pd.NA`이면
+  `ids[0] != expected`가 `pd.NA`가 되고 caller의 `if`에서 `TypeError: boolean value of NA is ambiguous`가
+  **fail-closed 함수 밖으로 전파**됐다. → null·비문자열 stamp를 명시 거부하고 `False` 반환. 변이(가드 제거)로 KILL 확인.
+- **[Med-5-3] 예외 catch 범위** — 유효. parquet 백엔드가 무엇을 던지든 게이트의 답은 "재계산"이므로
+  read 구간을 `except Exception`으로 넓히고 **그 판단 근거를 주석에 명시**(넓힌 게 실수로 보이지 않도록).
+  깨진 parquet 파일 회귀 테스트 추가.
+- **[Med-5-1] 모델 파일 부재 시 True 가능** — ❌ **재현 실패**: `read_verified_model_meta`가 이미 존재를 검사해
+  `False`였다. 다만 "stage의 `exists()`에 우연히 기대고 있다"는 우려는 타당하므로 **helper 단독 호출 회귀 테스트**를 추가해
+  고정했다(1-7·4-x가 직접 재사용할 때를 대비).
+- **[Low-1] cross-process 결정론이 테스트로 고정 안 됨** — 유효. 같은 pytest 프로세스 2회 학습은 근거가 약하다는 지적
+  수용 → **subprocess로 인터프리터를 새로 띄워 2회 실행하고 id 동일성을 검증**하는 테스트 추가.
+- **[Low-3] seed/데이터 변경 테스트가 계약을 과잉 주장** — 유효. 계약은 "바이트가 다르면 id가 다르다"이지
+  "seed가 다르면 반드시 바이트가 다르다"가 아니다. → 테스트명을 `..._on_this_fixture`로 바꾸고 **픽스처 기반 회귀임을
+  주석에 명시**(계약 진술이 아님).
+- **[리뷰어 지적] 재현 스크립트의 Med-3 출력이 고정 문자열** — 타당. `hasattr`·`__all__`을 **실제로 검사**하도록 수정.
+
+### 재검증
+
+- 237 → **242 passed**, 회귀 0. 구조 가드 전종 0 위반. 변이(NA 가드 제거) KILLED.
+
 ## Change Log
 
 | 날짜 | 변경 |
 |---|---|
 | 2026-07-21 | 스토리 1-6b create-story: AD-5 정체성(artifact_id·churn_model.meta.json·scored 결속·불일치 즉시 실패·게이트 강화). meta에 `metrics` 포함 결정. Status → ready-for-dev. 기준선 196 passed |
 | 2026-07-21 | 스토리 1-6b 구현: artifact_id=sha256(joblib bytes) 확정(바이트 안정성 실측), meta.json 7필드+metrics, scored 결속, 게이트 fail-closed, write_with_meta meta_path 확장. 1-6a 지표 완전 재현. 196 → 224 passed, 회귀 0. Status → review |
+| 2026-07-21 | 2차 재리뷰: 9건 중 6건은 1차 반영분 재지적(pre-image 오독, HEAD 대조로 확인), 신규 3건 처리 — NA/비문자열 stamp fail-closed 복구(TypeError 전파 실재), 예외 범위 확대+근거 주석, subprocess 결정론 테스트, 테스트 문구 정정. 237 → 242 passed |
 | 2026-07-21 | 외부 GPT 리뷰 7건 처리(High 1·Med 4·Low 2): 디스크 모델 해시 검증(read_verified_model_meta)·id 형식 검증·seed 명시 주입·save_model 삭제·meta_path 충돌 차단·"same run"→"same content" 문구 정정·재실행 사유 로깅. 224 → 237 passed, 회귀 0 |
