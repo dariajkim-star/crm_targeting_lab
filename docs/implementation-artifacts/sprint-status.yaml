@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-21 (1-4 done; K-means 세그먼트+안정ID; 외부리뷰 6건; 150 passed)
+# last_updated: 2026-07-21 (1-5 ready-for-dev; 세그먼트 프로필·페르소나; 1-4 done. 150 passed)
 # project: crm-targeting-lab
 # project_key: NOKEY
 # tracking_system: file-system
@@ -95,7 +95,7 @@ development_status:
   1-2-customer-value-single-definition: done
   1-3-rfm-proxy-features: done
   1-4-kmeans-segments-stable-ids: done
-  1-5-segment-profiles-personas: backlog
+  1-5-segment-profiles-personas: ready-for-dev
   1-6-churn-model-baseline-lift: backlog
   1-7-shap-drivers-retention-actions: backlog
   epic-1-retrospective: optional
