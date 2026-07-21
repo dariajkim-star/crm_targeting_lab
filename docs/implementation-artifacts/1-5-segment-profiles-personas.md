@@ -190,7 +190,7 @@ seg1 특이: 관계수 2(타 4)·프리미엄 카드 비중↑·이탈 0%
 - **AC3 충족**: k=4 → 페르소나 정확히 4개(4~6 범위). "k 변하면 페르소나 수도 따라간다" 명시, 억지 분할 없음.
 - **AD-11**: `monetary_proxy` 소비만, `Total_Trans_Amt` 미명명 → 가드 위반 0. 프로필 산출물에 값 원컬럼 없음(테스트).
 - **정직성**: Unknown(소득11%·학력15%·혼인7%)을 범주로 보존, Platinum 20명 소셀 경고, 인구통계 평탄성 명시.
-- **테스트**: 150 → **161 passed** (+11: profile 11), 회귀 0. 구조 가드 전종 green.
+- **테스트**: 150 → 161 → **170 passed** (외부 리뷰 7건 반영), 회귀 0. 구조 가드 전종 green.
 
 ### File List
 
@@ -201,9 +201,48 @@ seg1 특이: 관계수 2(타 4)·프리미엄 카드 비중↑·이탈 0%
 - `docs/implementation-artifacts/1-5-segment-profiles-personas.md` — UPDATE, 본 기록
 - `docs/implementation-artifacts/sprint-status.yaml` — UPDATE, 상태 전이
 
+## Senior Developer Review (외부 GPT, 2026-07-21)
+
+**판정: Changes Requested** — High 1, Medium 5, Low 1. **7건 처리**(반려 0).
+정상 입력 집계·one_to_one·화이트리스트·monetary_proxy 소비·순수성은 통과 확인받음.
+
+### 실증 확인 (패치 전)
+
+| # | 심각도 | 주장 | 실증 |
+|---|---|---|---|
+| 1 | High | null CLIENTNUM끼리 가짜 매칭 + null segment_id 고객 조용히 탈락 | ✅ null키 통과(가짜 고객), 입력 4명→n합 3(1명 증발, share 1.0) |
+| 2 | Med | orphan 판정이 정상 매칭+raw값 null을 조인실패로 오판 | ✅ Customer_Age null → "no matching raw row" 오판 |
+| 3 | Med | 금지 컬럼명을 docstring/주석에 명명(엄격 불변식 위반) | ✅ 잔존 확인 |
+| 4 | Med | segment별 분포 대신 전체 분포 broadcast 변이 생존 | ✅ 동일 fixture라 생존 |
+| 5 | Med | 조인 정확성 oracle이 실제 그 고객 미검증(중앙값 불변) | ✅ [99,41,41,41,41] 중앙값 여전 41 |
+| 6 | Med | AC2 이탈률이 committed path 밖(세션 스니펫) | ✅ profile.py에 없음 |
+| 7 | Med/Low | 페르소나 수-SEGMENT_K 불일치 보장 없음, 빈 입력·실누수명 미고정 | ✅ 회귀 없음 |
+
+### 적용한 패치
+
+- **[High]** null `CLIENTNUM`(features·raw)·null `segment_id` **명시적 거부**(is_unique 이전에). 빈 features 거부.
+- **[Med-2]** orphan을 **merge `indicator`로 판정**(정상 매칭 + raw값 null을 조인실패로 오판하지 않음).
+  범주 null도 별도 거부(BankChurners는 결측을 "Unknown" 리터럴로 인코딩).
+- **[Med-3]** profile.py에서 금지 컬럼명을 **prose에서도 제거**("value source column"으로). (1-2 가드가
+  docstring을 의도적으로 무시하는 설계는 유지 — 가드를 되돌리지 않고 소스를 엄격히 준수.)
+- **[Med-4]** categorical fixture를 **세그먼트별로 다르게** 설계 + **exact per-segment oracle**(seg1 F 100%·
+  Unknown 50%, seg2 M 100% 등) → global-broadcast·부분 Unknown drop 변이 KILLED.
+- **[Med-5]** 조인 정확성 테스트를 **exact 중앙값 oracle**(seg1 age [10,99,100]→중앙 99)로.
+- **[Med-6/AC2]** 이탈률을 **커밋·테스트된 `segment_attrition_rates()`**로 승격(세션 스니펫 제거). 리포트가
+  이 함수를 재현 경로로 인용. Attrition은 여전히 `segment_profiles`에서 제외(타깃 위생).
+- **[Med-7/AC3]** **페르소나 수 == SEGMENT_K 회귀 테스트**(리포트 파싱). 빈 입력·**실제 누수 컬럼 2개**
+  배제 테스트 추가.
+
+### 패치 후 재검증
+
+- 생존 변이(global broadcast·null segment·null key·orphan 오판·seg1 Unknown drop) 전부 KILLED.
+- 이탈률 committed 함수 재현(0/0.04/0.116/0.361, 리포트 일치). 구조 가드 전종 0 위반.
+- **161 → 170 passed**, 회귀 0.
+
 ## Change Log
 
 | 날짜 | 변경 |
 |---|---|
 | 2026-07-21 | 스토리 1-5 create-story: 세그먼트 프로필/카테고리 집계 순수 함수 + 페르소나 4개 리포트. AD-11 monetary_proxy 소비·Unknown 정직 표기·Income $ 라벨 구분. Status → ready-for-dev. 기준선 150 passed |
-| 2026-07-21 | 스토리 1-5 구현: profile.py(segment_profiles·category_shares)·페르소나 4개 리포트·행동 기반 테스트. 인구통계 평탄성·이탈률(참고) 발견. Attrition은 타깃이라 프로필 함수서 제외. 150 → 161 passed, 회귀 0. Status → review |
+| 2026-07-21 | 스토리 1-5 구현: profile.py·페르소나 4개 리포트·행동 기반 테스트. 인구통계 평탄성·이탈률 발견. 150 → 161 passed, 회귀 0. Status → review |
+| 2026-07-21 | 외부 GPT 리뷰 7건 처리(High 1·Med 5·Low 1): null 키/segment 거부·orphan indicator·docstring 컬럼명 제거·segment별 exact oracle·조인 정확성 oracle·segment_attrition_rates 승격·페르소나수=SEGMENT_K 회귀. 161 → 170 passed, 회귀 0 |
