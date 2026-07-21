@@ -87,6 +87,16 @@ def assign_segments(features: pd.DataFrame, k: int = SEGMENT_K, seed: int = RAND
         raise ValueError(f"k must be >= 2 to form segments, got {k}")
     if k > len(features):
         raise ValueError(f"k={k} exceeds the number of rows ({len(features)})")
+    # Customer-table contract (review High): "stable id per customer" is only
+    # meaningful if CLIENTNUM is one-row-per-customer. A duplicate or null key -
+    # from an upstream double-load or a bad join - would otherwise put the SAME
+    # customer in two segments, silently. Reject it here rather than return a
+    # broken mapping.
+    ids = features[_ID_COLUMN]
+    if ids.isna().any():
+        raise ValueError(f"{_ID_COLUMN} must not contain nulls (one row per customer)")
+    if not ids.is_unique:
+        raise ValueError(f"{_ID_COLUMN} must be unique: one row per customer")
 
     # Cluster on a CANONICAL row order (by CLIENTNUM), not the caller's order.
     # KMeans is order-sensitive - k-means++ init samples points in data order -
@@ -96,15 +106,22 @@ def assign_segments(features: pd.DataFrame, k: int = SEGMENT_K, seed: int = RAND
     # determinism, this hardens it against any caller reordering).
     canonical = features.sort_values(_ID_COLUMN)
     scaled = StandardScaler().fit_transform(canonical[list(CLUSTERING_FEATURES)])
-    labels = pd.Series(
-        KMeans(n_clusters=k, random_state=seed, n_init=_N_INIT).fit_predict(scaled),
-        index=canonical.index,
-    )
+    raw = KMeans(n_clusters=k, random_state=seed, n_init=_N_INIT).fit_predict(scaled)
+
+    # KMeans can return FEWER than k clusters when the data has too few distinct
+    # feature vectors; the 1..k contract (and downstream persona count) would
+    # then be silently violated. Fail instead (review Med).
+    produced = pd.Series(raw).nunique()
+    if produced != k:
+        raise ValueError(
+            f"KMeans produced {produced} distinct clusters, expected {k} - the "
+            f"input likely has fewer than {k} distinct feature vectors."
+        )
 
     # Rank clusters by descending median value (total-order tiebreak so ties do
     # not make the labelling depend on run-to-run cluster numbering).
     stats = (
-        pd.DataFrame({"label": labels.to_numpy(), "value": canonical[_VALUE_COLUMN].to_numpy()})
+        pd.DataFrame({"label": raw, "value": canonical[_VALUE_COLUMN].to_numpy()})
         .groupby("label", sort=True)["value"]
         .agg(["median", "mean"])
     )
@@ -114,8 +131,14 @@ def assign_segments(features: pd.DataFrame, k: int = SEGMENT_K, seed: int = RAND
     # order[0] is the highest-value cluster -> segment_id 1.
     label_to_segment = {int(label): rank + 1 for rank, label in enumerate(order)}
 
-    # Map back and restore the caller's original row order.
-    return labels.map(label_to_segment).reindex(features.index).astype(int)
+    # Restore per-customer by CLIENTNUM (unique), NOT by the DataFrame index - a
+    # duplicate index would make a reindex ambiguous (review High). The result is
+    # indexed exactly like ``features``.
+    segment_by_id = pd.Series(
+        [label_to_segment[int(label)] for label in raw],
+        index=canonical[_ID_COLUMN].to_numpy(),
+    )
+    return ids.map(segment_by_id).astype(int)
 
 
 def build_feature_table(df: pd.DataFrame) -> pd.DataFrame:

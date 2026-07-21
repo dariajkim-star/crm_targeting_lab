@@ -143,6 +143,30 @@ def test_leakage_columns_absent_from_real_stage_output(tmp_path):
         assert col not in written.columns
 
 
+def test_stage_output_is_deterministic_across_two_runs(tmp_path):
+    # AD-7 acceptance: run the REAL stage twice into SEPARATE outputs (running
+    # into the same output twice would just hit the freshness skip and prove
+    # nothing) and require identical data. Catches any non-determinism the
+    # function-level tests miss - e.g. a stray reorder in the stage (review Med).
+    from crm.common.freshness import build_meta
+
+    src = tmp_path / "bankchurners.parquet"
+    df = _spread(60)
+    df.to_parquet(src, index=False)
+    src.with_suffix(src.suffix + ".meta.json").write_text(
+        json.dumps(build_meta("01_download", [], rows=len(df))), encoding="utf-8"
+    )
+
+    stage = _load_stage_02()
+    out_a, out_b = tmp_path / "a.parquet", tmp_path / "b.parquet"
+    stage.main([src], [out_a])
+    stage.main([src], [out_b])
+
+    a = pd.read_parquet(out_a).sort_values("CLIENTNUM").reset_index(drop=True)
+    b = pd.read_parquet(out_b).sort_values("CLIENTNUM").reset_index(drop=True)
+    pd.testing.assert_frame_equal(a, b)
+
+
 # --- AC2: behavioural score properties ---------------------------------------
 
 def test_frequency_score_is_monotone_with_frequency():

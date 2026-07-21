@@ -218,7 +218,7 @@ silhouette(k=4)=0.4119 ; 02_features 2회 연속 실행 데이터 동일 True
   조립하고 stage는 한 함수만 호출(40행 유지, AD-9). 출력 계약 `FEATURE_TABLE_COLUMNS`(RFM + segment_id).
 - **T4 회귀 갱신**: 1-3 stage 출력 테스트를 `FEATURE_TABLE_COLUMNS` 계약으로 갱신, 누수 배제 단언 유지.
 - **구조 가드 전종 green**(lane·layering·pipeline-shape·AD-11·stateful-common). 커버리지 리포트 재생성.
-- **테스트**: 133 → **144 passed** (+11: segments 11), 회귀 0.
+- **테스트**: 133 → 144 → **150 passed** (외부 리뷰 6건 반영), 회귀 0.
 
 ### File List
 
@@ -226,12 +226,48 @@ silhouette(k=4)=0.4119 ; 02_features 2회 연속 실행 데이터 동일 True
 - `crm/config.py` — UPDATE, `SEGMENT_K=4`(1-4 곡선서 선택)
 - `pipelines/02_features.py` — UPDATE, build_feature_table 호출로 segment_id 산출(40행 유지)
 - `requirements.txt` — UPDATE, scikit-learn 주석 해제(1-4 첫 설치)
-- `tests/segment/test_segments.py` — NEW, 안정ID·결정론·셔플불변·seed·tiebreak
-- `tests/segment/test_features.py` — UPDATE, stage 출력 계약을 FEATURE_TABLE_COLUMNS로
+- `tests/segment/test_segments.py` — NEW, 안정ID·결정론·셔플불변(CLIENTNUM)·seed/n_init spy·mean oracle·계약검증·군집수
+- `tests/segment/test_features.py` — UPDATE, FEATURE_TABLE_COLUMNS 계약 + stage 2회 실행 결정론
 - `docs/implementation-artifacts/segment-report-1-4.md` — NEW, elbow/실루엣·k근거·가치순 매핑
 - `docs/implementation-artifacts/structure-guard-coverage.md` — UPDATE, pytest 재생성
+- `docs/implementation-artifacts/deferred-work.md` — UPDATE, AD-1 문구 명확화 권고 기록
 - `docs/implementation-artifacts/1-4-kmeans-segments-stable-ids.md` — UPDATE, 본 기록
 - `docs/implementation-artifacts/sprint-status.yaml` — UPDATE, 상태 전이
+
+## Senior Developer Review (외부 GPT, 2026-07-21)
+
+**판정: Changes Requested** — High 1, Medium 4, Low 1. **6건 전부 실증 재현 후 처리**(반려 0).
+AD-11·pipeline-shape·누수 배제는 통과 확인받음.
+
+### 실증 확인 (패치 전)
+
+| # | 심각도 | 주장 | 실증 |
+|---|---|---|---|
+| 1 | High | CLIENTNUM/index 유일성을 가정 → 같은 고객이 다른 세그먼트, 중복 index reindex 오배정 | ✅ CLIENTNUM=0 두 행이 seg 4·3, 중복 index 오배정 재현 |
+| 2 | Med | KMeans가 실제 <k 군집을 만들어도 성공 처리 | ✅ 전부동일 4행 k=4 → segment 1개만, 예외 없음 |
+| 3 | Med | `n_init`·`StandardScaler` 제거 변이 생존 | ✅ 둘 다 SURVIVED |
+| 4 | Med | mean tiebreak 미검증(median=mean fixture) | ✅ mean 제거 변이 SURVIVED |
+| 5 | Med | 파이프라인 2회 실행 동일이 자동 테스트로 미고정 | ✅ 함수 테스트뿐, 실제 stage 2회 실행 테스트 없음 |
+| 6 | Low | `test_seed_is_actually_injected`가 취약(전역 최적 수렴 시 오탐 가능) | ✅ 결과기반 부등식은 안정 oracle 아님 |
+
+### 적용한 패치
+
+- **[High]** `assign_segments`에 **customer-table 계약 검증**: CLIENTNUM null·중복·index... 복원을
+  **index reindex → CLIENTNUM 기반 map**으로 교체(중복 index에도 고객별 정확). 셔플 테스트를
+  `reset_index` 후 CLIENTNUM 비교로 고쳐 "index 정렬" 변이를 사살.
+- **[Med-2]** fit 후 **실제 생성 군집 수 != k면 예외**(distinct feature vector 부족 fail-fast).
+- **[Med-3a]** `n_init`·`random_state`를 **생성자 spy**로 검증(결과기반 대신 인자 검사) → `n_init` 제거·
+  `seed+1` 변이 KILLED. **[Med-3b]** monetary ×1e6 **스케일 불변 테스트**(fuzzy) → StandardScaler 제거 KILLED.
+- **[Med-4]** median 동일·mean 다른 fixture로 **exact oracle**(B가 A보다 앞선 segment_id) → mean tiebreak 제거 KILLED.
+- **[Med-5]** 실제 `02_features::main()`을 **두 독립 output에 2회 실행**해 데이터 동일 단언.
+- **[Low]** 취약한 부등식 테스트를 spy 기반으로 대체(안정 oracle).
+- **[AD-1 조건부]** `SEGMENT_K`의 fitted-값/​하이퍼파라미터 구분을 deferred-work에 기록(스파인 개정 사안).
+
+### 패치 후 재검증
+
+- 생존 변이 6종(index 정렬·StandardScaler·n_init·mean tiebreak·seed+1·cluster-count) **전부 KILLED**.
+- High 재현(중복 CLIENTNUM·null·중복 index) 전부 예외 또는 고객별 정확. 실데이터 segment 분포 불변.
+- 구조 가드 전종 0 위반. **144 → 150 passed**, 회귀 0.
 
 ## Change Log
 
@@ -239,3 +275,4 @@ silhouette(k=4)=0.4119 ; 02_features 2회 연속 실행 데이터 동일 True
 |---|---|
 | 2026-07-21 | 스토리 1-4 create-story: K-means + 가치순 안정 ID + SEGMENT_K + sklearn 첫 설치 + 02_features 확장. Status → ready-for-dev. 기준선 133 passed |
 | 2026-07-21 | 스토리 1-4 구현: segments.py(K-means+가치순 안정ID)·SEGMENT_K=4·02_features 확장·scikit-learn 1.9.0 설치. 셔플 불변 초기 실패→정규 정렬로 수정, fuzzy fixture로 순서민감 변이 사살. 133 → 144 passed, 회귀 0. Status → review |
+| 2026-07-21 | 외부 GPT 리뷰 6건 처리(High 1·Med 4·Low 1): CLIENTNUM 계약검증+CLIENTNUM 기반 복원·실군집수 검증·n_init/seed spy·스케일 불변·mean tiebreak oracle·stage 2회 실행 테스트. 144 → 150 passed, 회귀 0 |
