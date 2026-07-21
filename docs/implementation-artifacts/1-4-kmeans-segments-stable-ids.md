@@ -5,7 +5,7 @@ baseline_passed: 133
 
 # Story 1.4: K-means 세그먼트와 안정 ID
 
-Status: review
+Status: done
 
 ## Story
 
