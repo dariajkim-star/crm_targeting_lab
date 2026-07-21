@@ -27,10 +27,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
+import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score
 from sklearn.model_selection import StratifiedKFold
+from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.preprocessing import StandardScaler
 from xgboost import XGBClassifier
 
 from crm.config import CHURN_CV_FOLDS, CHURN_TREE_METHOD, RANDOM_SEED
@@ -50,6 +53,11 @@ __all__ = [
 _ID_COLUMN = "CLIENTNUM"
 _LABEL_COLUMN = "Attrition_Flag"
 _POSITIVE_LABEL = "Attrited Customer"
+# The label's full vocabulary. Anything else - a typo, trailing whitespace,
+# "Unknown", null, a parser artefact - is REJECTED rather than silently scored
+# as an existing customer (review High-2: `.eq(positive)` mapped every anomaly
+# to 0). Failing beats silently corrupting the training population.
+_ALLOWED_LABELS = frozenset({"Attrited Customer", "Existing Customer"})
 
 # Continuous RFM proxies only. The R/F/M SCORES and segment_id are quantised or
 # derived from these three, so including them adds redundancy, not signal.
@@ -79,14 +87,34 @@ def build_xy(features: pd.DataFrame, raw: pd.DataFrame) -> tuple[pd.DataFrame, p
         if not frame[_ID_COLUMN].is_unique:
             raise ValueError(f"{name} CLIENTNUM must be unique (one row per customer)")
 
+    # BOTH directions of key mismatch are defects (review High-3): a features-only
+    # customer has no label, and a raw-only customer means the feature stage
+    # silently dropped someone - either way the training population is corrupted.
+    feature_ids = set(features[_ID_COLUMN])
+    raw_ids = set(raw[_ID_COLUMN])
+    if feature_ids != raw_ids:
+        raise ValueError(
+            f"CLIENTNUM sets differ between features and raw: "
+            f"{len(raw_ids - feature_ids)} customers lack features, "
+            f"{len(feature_ids - raw_ids)} lack labels. Reconcile upstream."
+        )
+
     merged = features[[_ID_COLUMN, *PREDICTOR_COLUMNS]].merge(
         raw[[_ID_COLUMN, _LABEL_COLUMN]], on=_ID_COLUMN, how="inner", validate="one_to_one"
     )
-    if len(merged) != len(features):
-        raise ValueError(
-            f"X/y join lost rows ({len(features)} features -> {len(merged)} matched); "
-            f"reconcile CLIENTNUM between features and raw."
-        )
+    # Canonical row order (review Med-7): StratifiedKFold splits by POSITION, so
+    # without a fixed order the same customers land in different folds when the
+    # caller's row order changes - and the reported CV numbers drift with it.
+    merged = merged.sort_values(_ID_COLUMN, kind="mergesort").reset_index(drop=True)
+
+    # Label vocabulary check (review High-2): fail on nulls and unknown values
+    # instead of silently scoring them as existing customers.
+    if merged[_LABEL_COLUMN].isna().any():
+        raise ValueError(f"{_LABEL_COLUMN} must not contain nulls")
+    unknown = set(merged[_LABEL_COLUMN].unique()) - _ALLOWED_LABELS
+    if unknown:
+        raise ValueError(f"unexpected {_LABEL_COLUMN} values: {sorted(unknown)}")
+
     # Defensive leakage re-audit (sprint-status warning): the target and the
     # Naive_Bayes_* columns must never reach X. They are not in PREDICTOR_COLUMNS,
     # but assert it so a future edit cannot smuggle one in.
@@ -95,14 +123,30 @@ def build_xy(features: pd.DataFrame, raw: pd.DataFrame) -> tuple[pd.DataFrame, p
         raise ValueError(f"predictor set contains target/leakage columns: {leaks}")
 
     x = merged[list(PREDICTOR_COLUMNS)].set_axis(merged[_ID_COLUMN], axis=0)
+    # Predictors must be finite numerics for BOTH models (review Low-10): XGBoost
+    # tolerates NaN but the logistic baseline does not, and a cryptic sklearn
+    # error far from here would hide the real data defect.
+    if not all(pd.api.types.is_numeric_dtype(x[c]) for c in PREDICTOR_COLUMNS):
+        raise TypeError(f"predictors must be numeric: {list(PREDICTOR_COLUMNS)}")
+    if not np.isfinite(x.to_numpy(dtype=float)).all():
+        raise ValueError("predictors contain NaN/inf - clean upstream before training")
     y = merged[_LABEL_COLUMN].eq(_POSITIVE_LABEL).astype(int).set_axis(merged[_ID_COLUMN], axis=0)
     return x, y
 
 
-def make_baseline(y: pd.Series, seed: int = RANDOM_SEED) -> LogisticRegression:
-    """Baseline: class-weighted logistic regression (handles the 16% imbalance)."""
-    return LogisticRegression(
-        class_weight="balanced", random_state=seed, max_iter=1000, solver="lbfgs"
+def make_baseline(y: pd.Series, seed: int = RANDOM_SEED) -> Pipeline:
+    """Baseline: standardised, class-weighted logistic regression.
+
+    StandardScaler first (review Med-5): L2-regularised logistic regression is
+    NOT scale-invariant, and monetary spans thousands while recency spans single
+    digits - an unscaled baseline would be artificially weak and inflate the
+    reported lift. (On the real data the scaled and unscaled baselines happen to
+    score identically to 4 decimals, but the comparison must not depend on that
+    accident.)
+    """
+    return make_pipeline(
+        StandardScaler(),
+        LogisticRegression(class_weight="balanced", random_state=seed, max_iter=1000, solver="lbfgs"),
     )
 
 
@@ -114,7 +158,11 @@ def make_xgboost(y: pd.Series, seed: int = RANDOM_SEED) -> XGBClassifier:
     """
     positives = int(y.sum())
     negatives = int(len(y) - positives)
-    scale_pos_weight = negatives / positives if positives else 1.0
+    if positives == 0 or negatives == 0:
+        # A single-class y would surface later as a cryptic XGBoost/sklearn error
+        # (review Med-4); name the real problem here.
+        raise ValueError("y must contain both classes (0 and 1) to train a classifier")
+    scale_pos_weight = negatives / positives
     return XGBClassifier(
         n_estimators=200,
         max_depth=4,
@@ -140,6 +188,19 @@ def pr_auc_cv(
     flatters a model that barely beats the base rate. Both models see the SAME
     folds. Not tautological - this trains real folds and scores held-out data.
     """
+    # CV validity (review Med-4): both classes must exist and the minority class
+    # must cover every fold, or some folds carry zero positives and the averaged
+    # PR-AUC is meaningless.
+    if n_splits < 2:
+        raise ValueError("n_splits must be >= 2")
+    counts = y.value_counts()
+    if set(counts.index) != {0, 1}:
+        raise ValueError("y must contain both classes 0 and 1 for stratified CV")
+    if int(counts.min()) < n_splits:
+        raise ValueError(
+            f"minority class count {int(counts.min())} is below n_splits={n_splits}"
+        )
+
     splitter = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
     scores: list[float] = []
     for train_idx, test_idx in splitter.split(x, y):
@@ -162,7 +223,16 @@ def lift(baseline: float, model: float) -> float:
 
 
 def score_customers(model: object, x: pd.DataFrame) -> pd.Series:
-    """Cross-sectional churn-RISK probability per customer, indexed like ``x``."""
+    """Cross-sectional churn-RISK score per customer, indexed like ``x``.
+
+    HONESTY (review Med-6): the column is named ``churn_prob`` because the
+    architecture spine (AD-5, pipeline diagram) fixes that name, but the value is
+    an UNCALIBRATED, IN-SAMPLE risk score: the final model is fit on all
+    customers and scores those same customers, and ``scale_pos_weight`` reweights
+    the loss so ``predict_proba`` does not track the true attrition rate.
+    Treat it as a RANKING signal (who is riskier than whom), not a calibrated
+    probability. Calibration is out of scope here and stated in the report.
+    """
     proba = model.predict_proba(x)[:, 1]
     return pd.Series(proba, index=x.index, name="churn_prob")
 

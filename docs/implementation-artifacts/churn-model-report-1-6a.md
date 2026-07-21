@@ -18,8 +18,12 @@ BankChurners 고객의 **이탈 위험을 cross-sectional로 분류**하는 base
   `Attrition_Flag`도 X에 없음. `build_xy`가 방어적으로 단언(테스트 고정). → AUC=1.0 무의미 누수 차단.
 - **불균형**: 이탈률 **16.07%**(1,627 / 10,127). XGBoost `scale_pos_weight = 음성/양성 ≈ 5.22`,
   baseline 로지스틱 `class_weight="balanced"`.
+- **baseline 스케일링(리뷰 반영)**: L2 로지스틱은 스케일 불변이 아니므로 baseline에 `StandardScaler`를
+  적용했다 — 미스케일 baseline이 리프트를 부풀릴 위험을 차단. (실측: 이 데이터에선 스케일 유무가
+  baseline PR-AUC를 사실상 바꾸지 않았다 0.4286→0.4297 — 우위가 스케일링 부재 탓이 아님을 확인.)
 - **결정론(AD-7)**: XGBoost `random_state=42`·**`n_jobs=1`**·`tree_method="hist"` 고정. CV는
-  `StratifiedKFold(shuffle, random_state=42)`. **03 2회 실행 → `churn_prob` 완전 동일**(실증).
+  `StratifiedKFold(shuffle, random_state=42)` + **CLIENTNUM 정규 정렬**(행 순서가 CV 수치를 못 바꾸게).
+  03 2회 실행 `churn_prob` 동일은 **회귀 테스트로 고정**(`test_stage_output_is_deterministic_across_two_runs`).
 
 ## 모델 비교 — PR-AUC (주지표)
 
@@ -29,21 +33,30 @@ BankChurners 고객의 **이탈 위험을 cross-sectional로 분류**하는 base
 | 모델 | PR-AUC (5-fold CV) |
 |---|---|
 | 무작위 기준선(=양성 비율) | 0.1607 |
-| baseline 로지스틱(class_weight=balanced) | 0.4286 |
-| **XGBoost** | **0.8044** |
+| baseline 로지스틱(StandardScaler + class_weight=balanced) | 0.4297 |
+| **XGBoost** | **0.8024** |
 
-**baseline 대비 XGBoost PR-AUC 리프트 = +87.7%** (FR5).
+**baseline 대비 XGBoost PR-AUC 리프트 = +86.7%** (FR5).
 
 ### +15% 목표 대비 (AC2 정직성)
 
-목표 +15%를 **크게 상회(+87.7%)한다.** 이는 실패 조항의 반대 경우지만, 정직하게 그 **원인**도 밝힌다:
+목표 +15%를 **크게 상회(+86.7%)한다.** 이는 실패 조항의 반대 경우지만, 정직하게 맥락을 밝힌다:
 얇은 RFM 피처셋임에도 성능이 높은 이유는 **`frequency_proxy`(연간 거래 건수, `Total_Trans_Ct`)가
-이 데이터셋에서 이탈과 강하게 연관**되기 때문이다(이탈 고객은 거래가 급감). 즉 XGBoost의 우위는
-비선형·상호작용 포착에서 오며, 단일 강신호 피처 위에서 baseline 로지스틱보다 뚜렷이 앞선다.
+이 데이터셋에서 이탈과 강하게 연관**되기 때문이다(이탈 고객은 거래가 급감). **우위의 원인은 확정하지
+않는다**(리뷰 반영): 스케일링 부재 탓이 아님은 실증했으나(위), 비선형/상호작용 기여를 분리하는
+ablation은 수행하지 않았다 — "비선형 포착 덕분"은 가설이지 증명된 주장이 아니다.
 
 > **주의(정직성)**: 이 리프트는 **모델 품질의 상한이 아니다.** 피처가 3개뿐이고 라벨이 단면적이므로,
 > 여기 수치를 "이탈을 몇 % 맞춘다"는 운영 성능으로 과대 해석하지 말 것. 이는 **baseline 대비 상대
 > 비교**이자 타겟팅 프레임(3-x)의 입력일 뿐이다.
+
+### `churn_prob`는 미보정 in-sample 점수다 (리뷰 반영, 정직성)
+
+최종 모델은 전체 고객으로 학습한 뒤 **같은 고객을 채점**하므로 `churn_prob`는 out-of-fold가 아닌
+**in-sample 점수**이고, `scale_pos_weight` 재가중 때문에 **보정된 확률이 아니다**(실측: 평균
+churn_prob 0.260 vs 실제 이탈률 0.161). 컬럼명은 스파인(AD-5)이 고정한 것이라 유지하되, **순위
+신호(누가 더 위험한가)로만 사용**할 것. calibration은 평가하지 않았다. 아래 세그먼트 평균 비교도
+방향 정합의 참고일 뿐 **독립 검증·calibration 증거가 아니다**.
 
 ## 파이프라인 정합성 (참고)
 
