@@ -33,13 +33,15 @@ so that 카드 고객을 행동 기반으로 세분화할 재료가 생긴다.
 
 ### AC 파생 — 이 스토리가 함께 닫는 두 부채 (사용자 인계, 필수)
 
-**AC4 — DQ2 해소: 입력 콘텐츠 드리프트 탐지(`is_output_stale`)**
-**Given** `02_features`가 자기 이전 출력과 meta를 남긴 상태에서 입력 parquet의 **내용이 바뀌었을 때**(config는 그대로)
+**AC4 — 직접 입력 콘텐츠 드리프트 탐지(`is_output_stale`)** *(2차 리뷰 후 범위 축소)*
+**Given** `02_features`가 자기 이전 출력과 meta를 남긴 상태에서 **직접 입력** parquet의 **내용이 바뀌었을 때**(config는 그대로)
 **When** 02를 재실행하면
-**Then** stale로 판정되어 재계산이 강제된다 — 즉 AD-13 대표 시나리오(02 코드/입력이 바뀌었는데 05만 도는 부분 재실행)가 더는 조용히 통과하지 않는다
+**Then** stale로 판정되어 재계산이 강제된다(출력 meta의 stage·config_hash 드리프트도 함께 stale)
 **And** 이 판정을 실증하는 테스트가 존재한다
 
-> **근거**: `verify_inputs`는 입력의 `config_hash`·producer stage만 보고 **입력 파일 자신의 SHA-256을 대조하지 않는다**(freshness.py 모듈 docstring의 KNOWN LIMITATION이 명시적으로 "1-3으로 예약"). 1-3이 **첫 stage-to-stage 소비자**이므로 여기서 소비 stage가 자기 이전 출력 meta의 `inputs` 해시를 현재 입력과 대조하는 `is_output_stale(output, inputs)`를 구현·배선한다.
+> **범위 (과잉주장 금지, 2차 리뷰 High-2)**: 이 AC는 **직접 입력**의 콘텐츠·자기 stage/config 드리프트만 다룬다. **전이적 staleness와 05-only 재실행 방지는 이 AC의 범위가 아니다** — 입력이 바이트 동일하나 그 원천이 바뀌고 하위 stage만 재실행되는 경우는 오케스트레이터 DAG 검증 또는 재귀 의존성 검증이 있어야 잡히며, 05·오케스트레이터가 생기는 후속 스토리로 이관한다(deferred-work.md). 순수 코드 변경(config 무변)도 범위 밖.
+>
+> **근거**: `verify_inputs`는 입력의 `config_hash`·producer stage만 보고 **입력 파일 자신의 SHA-256을 대조하지 않는다**. 1-3이 **첫 stage-to-stage 소비자**이므로 소비 stage가 자기 이전 출력 meta의 `inputs` 해시(+stage·config_hash)를 현재 상태와 대조하는 `is_output_stale(output, inputs, expected_stage)`를 구현·배선한다.
 
 **AC5 — 누수 컬럼 배제(1-6 감사 이전의 1차 방어선)**
 **Given** BankChurners 원본에 `Naive_Bayes_Classifier_*` 2개 컬럼이 있을 때
@@ -62,9 +64,9 @@ so that 카드 고객을 행동 기반으로 세분화할 재료가 생긴다.
   - [x] 시작 시 `verify_inputs([bankchurners.parquet], expected_stage="01_download")` 호출(사용자 인계 착수점). 이어 **T3의 `is_output_stale`로 콘텐츠 드리프트도 점검**.
   - [x] `crm.segment.features`의 함수로 RFM 산출 → `crm.common.atomic.write_with_meta`로 (`data/features_customers.parquet` + meta) 원자적 기록(정규 경로는 pipeline-diagram.md 기준). meta는 `build_meta(stage="02_features", inputs=[bankchurners.parquet], rows=...)`.
   - [x] `01_download`가 모듈명 숫자 시작이라 `python -m` 불가했던 것과 동일 — 실행 관례(`.venv/Scripts/python.exe pipelines/02_features.py`)를 docstring에 적고 README 있으면 정합.
-- [x] **T3. DQ2 해소 — `is_output_stale(output, inputs)` in `crm/common/freshness.py`** (AC: 4) ← **사용자 지정 필수**
-  - [x] 소비 stage가 **자기 이전 출력의 meta**를 읽어, 그 `inputs[name]` 해시를 **현재 입력 파일의 `file_sha256`과 대조**한다. 하나라도 불일치 → stale(재계산 필요). 출력 또는 meta 부재 → stale(=최초 실행). 순수·무상태(읽기만), 인터페이스는 freshness.py의 기존 규약(`meta_path_for`, `StaleInputError` 계열)과 일관되게.
-  - [x] freshness.py 모듈 docstring의 **KNOWN LIMITATION 문단을 갱신**: 1-3에서 해소됨으로 정정하고, 아직 남는 한계(산출물 자체 콘텐츠 해시 부재 등, deferred-work.md 1-1b 항목)는 명확히 구분해 남긴다. 거짓 완결 주장 금지.
+- [x] **T3. DQ2 직접 입력 드리프트 탐지 — `is_output_stale(output, inputs, *, expected_stage)` in `crm/common/freshness.py`** (AC: 4) ← **사용자 지정 필수**
+  - [x] 소비 stage가 **자기 이전 출력의 meta**를 읽어, 그 `inputs[name]` 해시를 **현재 입력 파일의 `file_sha256`과 대조**하고, 출력 meta의 **stage·config_hash**도 cache key로 검사한다. 하나라도 불일치 → stale. 출력 또는 meta 부재 → stale(=최초 실행). 순수·무상태(읽기만), 인터페이스는 freshness.py 기존 규약과 일관되게.
+  - [x] freshness.py 모듈 docstring을 정정: **직접 입력 드리프트만 해소**로 명시하고, 미해결(전이적 staleness·순수 코드변경·산출물 자체 변조)을 명확히 구분해 남긴다. **거짓 완결 주장 금지** — "DQ2 CLOSED"라 쓰지 않는다.
   - [x] 02_features에 배선: `verify_inputs`(선행 stage/​config 게이트) **다음에** `is_output_stale`(콘텐츠 드리프트 게이트)를 둔다 — 두 게이트의 역할이 다르다(전자=잘못된 producer/​config drift, 후자=같은 producer의 입력 내용 변화).
 - [x] **T4. AD-11 이름 소유권 — M축 배선의 정당성 확보** (AC: 5, AD-11) ← **가드 건드리기 전 반드시 이 순서**
   - [x] `features.py`는 `Total_Trans_Amt`를 **문자열/​어트리뷰트/​타입선언/​eval·query/​심볼 import 어떤 형태로도 명명하지 않는다.** M은 `customer_value(df)` 출력으로만 얻는다.
@@ -108,13 +110,13 @@ deferred-work.md가 명시한 인계와 정확히 일치한다:
 
 freshness.py 모듈 docstring이 스스로 밝힌 한계(그대로 인용 요지): `build_meta`는 각 입력의 SHA-256을 기록하지만 `verify_inputs`는 **그 기록 해시를 현재 입력과 대조하지 않는다.** 그래서 AD-13 대표 시나리오(누가 02 코드/입력을 바꾸고 02·05만, 동료가 05만 재실행 → 새 피처와 옛 확률이 섞인 마트)가 `config.py`만 그대로면 **조용히 통과**한다.
 
-닫는 방법은 docstring이 이미 지정: **소비 stage가 자기 이전 출력 meta의 `inputs` 해시를 현재 입력과 대조**(`is_output_stale(output, inputs)`). 이건 stage가 실제로 다른 stage 출력을 소비해야 테스트 가능한데, **1-3이 그 최초 지점**이다(01→02). 그래서 사용자가 이 스토리에 배정했다.
+**부분적으로** 닫는다: 소비 stage가 자기 이전 출력 meta의 **stage·config_hash + 직접 입력 해시**를 현재 상태와 대조(`is_output_stale(output, inputs, expected_stage)`). 이건 stage가 실제로 다른 stage 출력을 소비해야 테스트 가능한데, **1-3이 그 최초 지점**이다(01→02).
 
 주의: `is_output_stale`은 `verify_inputs`를 **대체하지 않고 보완**한다.
 - `verify_inputs`: 입력이 올바른 producer 산출인가 + config drift가 없는가 (게이트 A)
-- `is_output_stale`: 같은 producer의 입력 **내용**이 내 지난 산출 이후 바뀌었는가 (게이트 B)
+- `is_output_stale`: 내 이전 출력이 자기 stage·config·**직접 입력** 기준으로 stale한가 (게이트 B)
 
-두 게이트를 02_features에 순서대로 배선한다. **남는 한계는 정직하게 남길 것**: 산출물 *자신*의 콘텐츠 해시 부재(수동 변조 탐지)는 여전히 계약 밖이다(deferred-work.md 1-1b 항목). 거짓 완결 주장 금지.
+두 게이트를 02_features에 순서대로 배선한다. **닫지 못한 것(2차 리뷰 High-2, 정직하게)**: ① 전이적 staleness — 위 "대표 시나리오"의 **05-only 재실행은 이 게이트로 잡히지 않는다**(05의 직접 입력 `features`가 바이트 동일하면 fresh). 오케스트레이터 DAG 또는 재귀 의존성 검증이 있어야 하며 후속 스토리 소관 ② 순수 코드 변경(config 무변) ③ 산출물 자신의 콘텐츠 해시 부재(수동 변조). 모두 deferred-work.md 기록. **"DQ2 완전 해소"라 쓰지 말 것.**
 
 ### 1-1a/1-1b/1-2에서 물려받은 것 (재사용, 재발명 금지)
 
@@ -233,7 +235,7 @@ F·M을 **반의존(anti-correlated)**으로 배치한 판별 테스트(`test_fr
   않음. `find_value_recomputation_violations` scanned 10→11, 위반 0. 가드 무수정.
 - **구조 가드 전종 green**: lane·layering·pipeline-shape·stateful-common·config·AD-11 모두 0 위반.
   커버리지 리포트 자동 재생성(pipeline shape 2 scanned, AD-11 11 scanned).
-- **테스트**: 99 → 119 → **128 passed** (외부 리뷰 8건 패치 반영), 회귀 0.
+- **테스트**: 99 → 119 → 128 → **133 passed** (외부 리뷰 1·2차 반영), 회귀 0.
 
 ### File List
 
@@ -242,8 +244,8 @@ F·M을 **반의존(anti-correlated)**으로 배치한 판별 테스트(`test_fr
 - `crm/common/freshness.py` — UPDATE, `is_output_stale()` 추가 + DQ2 docstring 정정
 - `crm/common/atomic.py` — UPDATE, `write_parquet_with_meta()` 헬퍼(lambda를 crm으로 내림)
 - `crm/config.py` — UPDATE, `RFM_QUANTILES=5`(선험 규약 상수)
-- `tests/segment/test_features.py` — NEW, 행동 기반(축별 oracle·qcut 갭·순서불변·실누수명 포함)
-- `tests/common/test_freshness.py` — UPDATE, `is_output_stale` 11건(config drift·stage·empty 포함)
+- `tests/segment/test_features.py` — NEW, 행동 기반(5·10명 축별 oracle·qcut 엣지·순서불변·실누수명+실 stage 호출)
+- `tests/common/test_freshness.py` — UPDATE, `is_output_stale`(config drift·stage·empty·OSError fail-closed)
 - `docs/implementation-artifacts/rfm-proxy-report-1-3.md` — NEW, 세션 리포트(DQ2 한계 정정)
 - `docs/implementation-artifacts/deferred-work.md` — UPDATE, 전이적 staleness·코드지문 미해결 기록
 - `docs/implementation-artifacts/structure-guard-coverage.md` — UPDATE, pytest 재생성
@@ -279,17 +281,39 @@ AD-11 배선·pipeline-shape·게이트 순서는 통과 확인받음.
 - **[Med-3]** 살아남은 code를 **dense-rank**해 갭 제거, 전부동일→단일버킷(1점), **NaN 거부**(fail-fast),
   `quantiles>=2` 검증, 빈 프레임 안전. "no gaps regardless" 거짓 주석 정정.
 - **[Med-4]** R·F·M **축별 exact oracle** 추가(`[5,4,3,2,1]`/`[1,2,3,4,5]`/`[1,2,3,4,5]`) — R clip·
-  F clip·경계 off-by-one 변이 전부 KILLED 재확인.
+  F clip 변이 KILLED. (※ 2차 리뷰에서 버킷 수 팽창 변이 생존 발견 → 아래 2차 라운드에서 보강.)
 - **[Med-5]** `random_state` 셔플 후 CLIENTNUM 정렬 비교로 **행 순서 불변** 직접 검증(동률 다수 fixture).
-- **[Med-6]** 실제 누수 컬럼명 2개 전체를 fixture에 사용 + **stage가 쓴 parquet**에도 부재 단언.
+- **[Med-6]** 실제 누수 컬럼명 2개 전체를 fixture에 사용. (※ 2차 리뷰: 실제 stage 미호출 지적 → 아래 보강.)
 - **[Low-7]** meta read에 `OSError` 포함, 입력 해시 실패도 fail-closed(True).
 - **[Low-8]** 빈 입력은 `ValueError`(소비 stage 전용 계약 명시).
 
-### 패치 후 재검증
+### 패치 후 재검증 (1차)
 
-- High-1 config drift → stale True 재확인. 생존했던 R clip·경계 변이 전부 KILLED.
-- qcut 엣지 4종(갭·전부동일·NaN·빈) 단위 테스트 통과. 실데이터 R 분포 불변(4버킷 연속).
-- 구조 가드 전종 0 위반. **119 → 128 passed**, 회귀 0.
+- High-1 config drift → stale True 재확인. 구조 가드 전종 0 위반. **119 → 128 passed**, 회귀 0.
+
+### 2차 재리뷰 (외부 GPT, 2026-07-21) — Changes Requested → 4건 닫음
+
+1차 판정 후 재리뷰가 **"문서가 테스트보다 앞서 결승선을 끊었다"**를 지적했다. 코드 방향은 맞지만
+일부는 테스트/문서가 코드 현실을 앞질렀다. 4건 전부 실증 후 처리:
+
+- **[High-2 doc 모순]** 하단 Completion Notes·docstring은 정정됐으나 **상단 AC4·T3·Dev Notes에
+  05-only 차단 주장이 남아** 코드와 모순이었다. AC4를 "직접 입력 콘텐츠 드리프트 탐지"로
+  **범위 축소**, T3 제목·Dev Notes DQ2 절을 동일 계약으로 통일. "05-only는 이 게이트로 안 잡힘"을
+  명시.
+- **[Med-4 잔여]** 5명/5분위 oracle은 **버킷 수 팽창 변이**(`quantiles + int(nunique>quantiles)`)를
+  못 잡았다(실증: 5명 oracle 통과, 100명서 51% 상이). **10명/5분위 exact oracle**(`[1,1,2,2,3,3,4,4,5,5]`)
+  추가 → 해당 변이 KILLED 재확인.
+- **[Med-6 잔여]** stage 테스트가 실제 `main()`을 호출하지 않아 "원본을 기록하는" pipeline 회귀를
+  못 잡았다. `importlib`로 `pipelines/02_features.py`를 로딩해 **실제 `main([src],[target])` 호출** +
+  01_download meta 준비. 회귀 주입 시 FAIL 확인.
+- **[Med-3 잔여]** 빈 프레임·`quantiles=1` 테스트가 없어 "4종 통과" 문구가 과장이었다.
+  `test_empty_frame_returns_empty_feature_table`·`test_quantiles_below_two_are_rejected` 추가
+  (빈 프레임은 `customer_value`까지 end-to-end).
+- **[Low-7 잔여]** `OSError` fail-closed에 회귀 테스트 부재 → meta read·`file_sha256` 각각 monkeypatch로
+  `PermissionError`/`OSError` 주입해 stale True 실증.
+
+**2차 재검증**: 버킷 팽창·stage 회귀 변이 KILLED, 엣지 테스트 전부 green, 구조 가드 0 위반.
+**128 → 133 passed**, 회귀 0.
 
 ## Change Log
 
@@ -298,3 +322,4 @@ AD-11 배선·pipeline-shape·게이트 순서는 통과 확인받음.
 | 2026-07-21 | 스토리 1-3 create-story: RFM 프록시 + M축 AD-11 배선(customer_value 소비) + DQ2 is_output_stale + 누수 배제. Status → ready-for-dev. 기준선 99 passed |
 | 2026-07-21 | 스토리 1-3 구현: features.py(RFM 프록시)·02_features(2단 게이트)·is_output_stale·누수 배제·분위수 리포트. 99 → 119 passed, 회귀 0. Status → review |
 | 2026-07-21 | 외부 GPT 리뷰 8건 처리(High 2·Med 4·Low 2): High-1 config/stage cache key·High-2 과잉주장 정정+defer·Med-3 qcut dense-rank/엣지·Med-4 축별 oracle·Med-5 순서불변·Med-6 실누수명·Low-7 OSError·Low-8 빈입력. 119 → 128 passed, 회귀 0 |
+| 2026-07-21 | 2차 재리뷰 4건 처리: High-2 AC4·T3·Dev Notes 범위 축소(05-only 차단 주장 삭제)·Med-4 10명 oracle로 버킷팽창 변이 사살·Med-6 실제 stage main() 호출 테스트·Med-3 빈프레임+quantiles=1 테스트·Low-7 OSError 회귀 테스트. 128 → 133 passed, 회귀 0 |

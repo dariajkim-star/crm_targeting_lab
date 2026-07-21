@@ -9,6 +9,8 @@ mutations pass, so a fixed oracle sits alongside the monotonicity properties.
 
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 import pytest
 
@@ -97,20 +99,40 @@ def test_real_leakage_columns_are_excluded():
         assert col not in out.columns
 
 
-def test_leakage_columns_absent_from_written_stage_output(tmp_path):
-    # End-to-end: the parquet the stage actually WRITES must not carry the leak
-    # columns either (not just the in-memory return).
-    from crm.common.atomic import write_parquet_with_meta
+def _load_stage_02():
+    """Import pipelines/02_features.py by path (module name starts with a digit
+    so a normal import cannot reach it)."""
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "pipelines" / "02_features.py"
+    spec = importlib.util.spec_from_file_location("stage_02_features", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_leakage_columns_absent_from_real_stage_output(tmp_path):
+    # review Med-6 (2nd round): the earlier test wired compute_rfm_features +
+    # write_parquet_with_meta by hand and never ran the STAGE, so a regression
+    # that writes the source frame instead of features would pass. This invokes
+    # pipelines/02_features.py::main() for real, through both freshness gates.
     from crm.common.freshness import build_meta
 
+    src = tmp_path / "bankchurners.parquet"
+    target = tmp_path / "features_customers.parquet"
     df = _spread(30)
     for col in _REAL_LEAK_COLUMNS:
         df[col] = 1.0
-    out = compute_rfm_features(df)
-    target = tmp_path / "features_customers.parquet"
-    src = tmp_path / "bankchurners.parquet"
-    src.write_bytes(b"raw")
-    write_parquet_with_meta(target, out, build_meta("02_features", [src], rows=len(out)))
+    df.to_parquet(src, index=False)
+    # A valid 01_download meta so verify_inputs accepts the input.
+    src.with_suffix(src.suffix + ".meta.json").write_text(
+        json.dumps(build_meta("01_download", [], rows=len(df))), encoding="utf-8"
+    )
+
+    stage = _load_stage_02()
+    stage.main([src], [target])
+
     written = pd.read_parquet(target)
     assert list(written.columns) == list(RFM_OUTPUT_COLUMNS)
     for col in _REAL_LEAK_COLUMNS:
@@ -195,6 +217,41 @@ def test_hardcoded_oracle_per_axis_bucket_assignment():
     assert list(out.loc[[1, 2, 3, 4, 5], "F_score"]) == [1, 2, 3, 4, 5]
     # R inverted: customer 1 (0 months) is most recent -> 5; customer 5 -> 1.
     assert list(out.loc[[1, 2, 3, 4, 5], "R_score"]) == [5, 4, 3, 2, 1]
+
+
+def test_hardcoded_oracle_with_more_customers_than_buckets():
+    # review Med-4 (2nd round): a 5-customer/5-quantile oracle cannot see a
+    # mutation that INFLATES the bucket count when n > quantiles (e.g.
+    # quantiles + int(nunique > quantiles)). Ten distinct values over 5 quantiles
+    # must land exactly two-per-bucket 1..5. Pinned by hand.
+    df = _frame(
+        [
+            {"CLIENTNUM": i, "Months_Inactive_12_mon": i,
+             "Total_Trans_Ct": 10 + i * 5, "Total_Trans_Amt": 500 + i * 200}
+            for i in range(10)
+        ]
+    )
+    out = compute_rfm_features(df, quantiles=5).set_index("CLIENTNUM")
+    assert out["F_score"].tolist() == [1, 1, 2, 2, 3, 3, 4, 4, 5, 5]
+    assert out["M_score"].tolist() == [1, 1, 2, 2, 3, 3, 4, 4, 5, 5]
+    # R inverts: fewest inactive months (customer 0) -> highest score.
+    assert out["R_score"].tolist() == [5, 5, 4, 4, 3, 3, 2, 2, 1, 1]
+    assert out[["R_score", "F_score", "M_score"]].max().tolist() == [5, 5, 5]
+
+
+def test_empty_frame_returns_empty_feature_table():
+    # review Med-3 (2nd round): the "empty" edge was claimed tested but wasn't.
+    # Exercises compute_rfm_features end-to-end (incl. customer_value on empty).
+    df = _spread(1).iloc[0:0]
+    out = compute_rfm_features(df)
+    assert out.empty
+    assert list(out.columns) == list(RFM_OUTPUT_COLUMNS)
+
+
+def test_quantiles_below_two_are_rejected():
+    # review Med-3 (2nd round): quantiles>=2 was enforced in code but not pinned.
+    with pytest.raises(ValueError, match="quantiles must be >= 2"):
+        compute_rfm_features(_spread(10), quantiles=1)
 
 
 def test_qcut_code_gaps_do_not_leave_score_holes():

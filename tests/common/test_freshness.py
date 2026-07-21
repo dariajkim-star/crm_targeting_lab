@@ -320,3 +320,32 @@ def test_is_output_stale_fresh_only_on_full_match(tmp_path: Path) -> None:
     out = tmp_path / "features_customers.parquet"
     _output_built_from(out, [src])
     assert freshness.is_output_stale(out, [src], expected_stage="02_features") is False
+
+
+def test_is_output_stale_true_when_meta_read_raises_oserror(tmp_path, monkeypatch):
+    # review Low-7: a PermissionError / lock on the meta must fail-closed (stale),
+    # not crash. Without this test, dropping OSError from the except goes unnoticed.
+    src = tmp_path / "bankchurners.parquet"
+    src.write_bytes(b"raw")
+    out = tmp_path / "features_customers.parquet"
+    _output_built_from(out, [src])
+
+    def boom(*a, **k):
+        raise PermissionError("locked")
+
+    monkeypatch.setattr(Path, "read_text", boom)
+    assert freshness.is_output_stale(out, [src], expected_stage="02_features") is True
+
+
+def test_is_output_stale_true_when_input_hash_raises_oserror(tmp_path, monkeypatch):
+    # An input removed/locked between exists() and hashing must fail-closed too.
+    src = tmp_path / "bankchurners.parquet"
+    src.write_bytes(b"raw")
+    out = tmp_path / "features_customers.parquet"
+    _output_built_from(out, [src])
+
+    def boom(_path):
+        raise OSError("vanished mid-hash")
+
+    monkeypatch.setattr(freshness, "file_sha256", boom)
+    assert freshness.is_output_stale(out, [src], expected_stage="02_features") is True
