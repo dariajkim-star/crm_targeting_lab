@@ -5,7 +5,7 @@ baseline_passed: 150
 
 # Story 1.5: 세그먼트 프로필과 페르소나
 
-Status: review
+Status: done
 
 ## Story
 
