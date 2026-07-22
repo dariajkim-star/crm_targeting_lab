@@ -2,9 +2,10 @@
 
 이탈위험 × 고객가치 2×2 타겟팅 의사결정 프레임. 배치 파이프라인이 데이터마트(CSV)를 만들고, Tableau Public이 그것을 표시한다. 문서 지도: [SPEC](docs/specs/spec-crm-targeting-lab/SPEC.md) · [아키텍처 스파인](docs/planning-artifacts/architecture/architecture-crm-targeting-lab-2026-07-16/ARCHITECTURE-SPINE.md) · [에픽/스토리](docs/planning-artifacts/epics.md)
 
-> 진행 중 — **Epic 1(고객 이해 + 이탈 위험) 완료**. 현재 상태: 테스트 267개, RFM 세그먼트 4종 + 페르소나,
-> XGBoost 이탈위험 분류 PR-AUC 0.956(baseline 대비 +37.6%), SHAP 요인→리텐션 액션 매핑, 학습 아티팩트
-> 정체성 고정(AD-5). 다음은 Epic 2(LTV 확률 모델 데모) → Epic 3(2×2 타겟팅 + 캠페인 시뮬레이터).
+> 진행 중 — **Epic 1(고객 이해 + 이탈 위험) 완료**. 현재 상태: 테스트 272개, RFM 세그먼트 4종 + 페르소나,
+> XGBoost 이탈위험 분류 PR-AUC 0.9508(baseline 0.6751 대비 **+40.8%**, 예측자 8개), SHAP 요인→리텐션 액션
+> 매핑, 학습 아티팩트 정체성 고정(AD-5). 다음은 Epic 3(2×2 타겟팅 + 캠페인 시뮬레이터) → Epic 2(LTV 확률
+> 모델 데모) — 에픽1 회고에서 순서를 교체했다([회고](docs/implementation-artifacts/epic-1-retro-2026-07-22.md)).
 > README 본편(핵심 수치·발견·한계)은 4-4에서 작성된다.
 
 ## 셋업
