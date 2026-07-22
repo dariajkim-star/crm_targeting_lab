@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-22 (3-0 review; OOF+Platt 투트랙 구현, 330 passed)
+# last_updated: 2026-07-22 (3-0 review, 3-2 ready-for-dev; 332 passed)
 # project: crm-targeting-lab
 # project_key: NOKEY
 # tracking_system: file-system
@@ -123,7 +123,7 @@ development_status:
   # Rationale + measurements: deferred-work.md "A2 결정".
   3-0-oof-scores-platt-calibration: review
   3-1-official-quadrant-assignment: done
-  3-2-campaign-savings-simulator: backlog
+  3-2-campaign-savings-simulator: ready-for-dev
   3-3-budget-constrained-target-priority: backlog
   3-4-sensitivity-analysis-flip-region: backlog
   epic-3-retrospective: optional
