@@ -21,7 +21,9 @@ and every tool in this repo reads it with an explicit encoding.
 
 from __future__ import annotations
 
+from enum import Enum
 from pathlib import Path
+from typing import NamedTuple
 
 # --- Reproducibility (AD-7) --------------------------------------------------
 # Every stochastic operation must receive this explicitly: K-means
@@ -68,6 +70,115 @@ CHURN_TREE_METHOD: str = "hist"  # source: 규약 (deterministic with n_jobs=1)
 SHAP_BACKGROUND_SIZE: int = 200  # source: 규약 (cost/precision trade-off)
 # How many drivers a per-segment table reports. The epic asks for top5.
 DRIVER_TOP_N: int = 5  # source: 규약 (epic 1.7 AC: 요인 top5)
+
+# --- Targeting matrix: the 2x2 decision rule (story 3-1, AD-12) --------------
+# ONE rule, declared once. The simulator (3-2) and the sensitivity sweep (3-4)
+# CONSUME `quadrant_official`; neither may cut its own threshold. AD-12 exists
+# because a 2x2 drawn at the median and a target list cut at the 70th
+# percentile put the same customer in "Save first" on the dashboard and outside
+# the campaign - the most visible contradiction a portfolio can ship.
+
+
+class Quadrant(str, Enum):
+    """The four official cells (AD-12: an Enum, never a free string).
+
+    VALUES ARE ASCII ON PURPOSE. The Korean display labels this project reports
+    ("Save 우선" / "관망" / "저비용 유지" / "이탈 수용") belong to the report and
+    dashboard layer, not to anything the runtime parses - the module docstring's
+    encoding rule applies to Enum values too (P1 cp949 console lesson).
+
+    Cell meanings (risk axis first, then value axis):
+      SAVE_FIRST     high risk, high value  - worth spending to keep
+      WATCH          high risk, low value   - likely to leave, cheap to lose
+      LOW_COST_KEEP  low risk,  high value  - valuable and not going anywhere
+      ACCEPT_CHURN   low risk,  low value   - no action warranted
+    """
+
+    SAVE_FIRST = "save_first"
+    WATCH = "watch"
+    LOW_COST_KEEP = "low_cost_keep"
+    ACCEPT_CHURN = "accept_churn"
+
+
+class QuadrantRule(NamedTuple):
+    """How the two axes are cut. A METHOD, not a pair of measured edges.
+
+    Why NamedTuple and not @dataclass
+    ---------------------------------
+    THIS FILE CANNOT CONTAIN A DATACLASS. The AD-4 guard test executes this
+    module's source under a synthetic module name that is absent from
+    `sys.modules` (to prove the import-time grid check really bites). While
+    building a dataclass, `dataclasses` resolves each field annotation to check
+    for ClassVar/InitVar by looking the class's module up in `sys.modules` -
+    which returns None there and raises AttributeError, taking the guard test
+    down with it. NamedTuple reads `__annotations__` directly and is unaffected.
+    A future story adding structured config here must keep this constraint.
+
+    AD-1 vs AD-12, and why this holds only quantile LEVELS
+    -----------------------------------------------------
+    AD-12 says the threshold "방식·값" live here. AD-1 forbids data-derived
+    values here. Parking `risk_threshold = 0.1607` would satisfy the first and
+    violate the second - 0.1607 is read off the label column.
+
+    Story 1-3 already settled this shape for RFM: config holds the quantile
+    COUNT (`RFM_QUANTILES = 5`, an a-priori convention), the runtime computes
+    the edges, and the report records what they came out to be. The same split
+    applies here. The realised cuts are returned by `quadrant_thresholds()` and
+    travel to the mart as `threshold_official_*` columns (AD-3), never back
+    into this file.
+
+    Why 0.75 on risk and 0.50 on value (the asymmetry is deliberate)
+    ---------------------------------------------------------------
+    The value axis is split at its median, the textbook 2x2 cut, and
+    `customer_value` is spread evenly enough for the median to mean something.
+
+    The risk axis is NOT. Measured on the 8-predictor scored artifact, the
+    median `churn_prob` is 0.0051 while the real attrition rate is 0.1607: a
+    median cut would stamp "high risk" on customers with a 0.5% probability of
+    leaving, and the label would be worthless the moment anyone checked. The
+    75th percentile keeps the upper cell meaningful.
+
+    Like `SEGMENT_K`, this is an analyst's choice informed by the distribution,
+    not a fitted statistic - 0.75 is a convention, and the cut it produces
+    (0.12684 on the current artifact) is computed at runtime and reported.
+
+    Boundary
+    --------
+    `>=` sends a customer sitting exactly on a threshold to the UPPER cell
+    (AC3). Stated here rather than left to the comparison operator in the
+    implementation, because "which side does the edge belong to" is a rule, not
+    a coding detail.
+    """
+
+    risk_quantile: float
+    value_quantile: float
+    boundary: str
+
+    def replace(self, **changes: float | str) -> "QuadrantRule":
+        """Return a copy with fields overridden (used by sweeps and tests).
+
+        A sweep varies the rule by passing a NEW rule object into the function,
+        never by mutating this module's constant (AD-4: config is read, not
+        rewritten at runtime). Tuples are immutable, so an accidental in-place
+        edit raises rather than silently redefining the official rule.
+
+        A public alias for `_replace`: the underscore marks it as part of the
+        NamedTuple machinery, not as private, and call sites should not have to
+        look that up.
+        """
+        return self._replace(**changes)
+
+
+# The upper cell owns its edge. Declared as a constant so the guard below and
+# the docstring above refer to the same token.
+BOUNDARY_UPPER_INCLUSIVE: str = "upper_inclusive"  # source: 규약 (AD-12 `>=`)
+
+# source: 규약 (a-priori quantile levels; realised cuts are runtime + reported)
+QUADRANT_RULE: QuadrantRule = QuadrantRule(
+    risk_quantile=0.75,
+    value_quantile=0.50,
+    boundary=BOUNDARY_UPPER_INCLUSIVE,
+)
 
 # --- Campaign policy assumptions (NFR1: assumptions, not measurements) -------
 # These are NOT estimated from data. They are stated assumptions, and every
@@ -116,4 +227,22 @@ if COST_PER_CONTACT not in COST_GRID:
     raise ValueError(
         "AD-4: COST_PER_CONTACT must be a point on COST_GRID so the simulator's "
         "headline result lies on the sensitivity curve."
+    )
+# A quantile outside (0, 1) is not a stricter rule, it is an empty or total
+# quadrant - and it would surface as a confusing pandas error deep inside the
+# assignment rather than here, where the rule is declared.
+for _name, _q in (
+    ("risk_quantile", QUADRANT_RULE.risk_quantile),
+    ("value_quantile", QUADRANT_RULE.value_quantile),
+):
+    if not 0.0 < _q < 1.0:
+        raise ValueError(
+            f"AD-12: QUADRANT_RULE.{_name} must lie strictly between 0 and 1, "
+            f"got {_q}. A cut at 0 or 1 empties one side of the axis."
+        )
+if QUADRANT_RULE.boundary != BOUNDARY_UPPER_INCLUSIVE:
+    raise ValueError(
+        "AD-12: the only supported boundary rule is "
+        f"'{BOUNDARY_UPPER_INCLUSIVE}' (>=). A second convention would let the "
+        "2x2 and the target list disagree about the customer on the edge."
     )
