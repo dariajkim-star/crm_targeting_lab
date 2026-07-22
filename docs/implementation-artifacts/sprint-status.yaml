@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-22 (3-0 ready-for-dev; A2 실행 스토리, 313 passed)
+# last_updated: 2026-07-22 (3-1 done; 3-0 착수, 313 passed)
 # project: crm-targeting-lab
 # project_key: NOKEY
 # tracking_system: file-system
@@ -122,7 +122,7 @@ development_status:
   # Runs AFTER 3-1 closes and BEFORE 3-2 (3-2 needs the calibrated column).
   # Rationale + measurements: deferred-work.md "A2 결정".
   3-0-oof-scores-platt-calibration: ready-for-dev
-  3-1-official-quadrant-assignment: review
+  3-1-official-quadrant-assignment: done
   3-2-campaign-savings-simulator: backlog
   3-3-budget-constrained-target-priority: backlog
   3-4-sensitivity-analysis-flip-region: backlog
