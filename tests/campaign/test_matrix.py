@@ -17,10 +17,11 @@ plausible wrong implementation breaks:
     probe that catches swapped axes - a swap breaks monotonicity in both.
   - BOUNDARY: a customer sitting exactly on the threshold goes to the UPPER
     quadrant (AC3). The `>` vs `>=` mutation dies here and only here.
-  - RANK-ONLY: a strictly increasing transform of the risk scores leaves every
-    assignment unchanged. This is the mechanical proof of AC6 - the rule reads
-    ORDER, never the calibrated magnitude, so the unresolved calibration debt
-    (retro action A2) cannot reach this story.
+  - RANK-ONLY, AND ITS LIMIT: a STRICTLY increasing transform of the risk
+    scores leaves every assignment unchanged, but a monotone NON-decreasing one
+    (isotonic calibration) does not - a plateau spanning the cut moves people
+    across it. Both directions are pinned, because the weaker claim is the one
+    the report is allowed to make (external review, 2026-07-22).
   - LABELS come from the Enum, never free strings (AC1)
   - FAIL-FAST on empty input, NaN, and misaligned indexes (1-6a/1-6b/1-7
     discipline: no quiet tolerance)
@@ -33,7 +34,7 @@ import pandas as pd
 import pytest
 
 from crm.campaign.matrix import assign_quadrant, quadrant_thresholds
-from crm.config import QUADRANT_RULE, Quadrant
+from crm.config import BOUNDARY_UPPER_INCLUSIVE, QUADRANT_RULE, Quadrant
 
 
 def _series(values: list[float], name: str, index: list[int] | None = None) -> pd.Series:
@@ -73,7 +74,7 @@ _EDGE_VALUE = [10.0, 20.0, 30.0, 40.0, 50.0]
 def test_every_row_receives_exactly_one_known_label() -> None:
     risk, value = _paired(_RISK, _VALUE)
 
-    result = assign_quadrant(risk, value)
+    result = assign_quadrant(risk, value).labels
 
     assert len(result) == len(risk)
     assert result.index.equals(risk.index)
@@ -85,7 +86,7 @@ def test_labels_are_enum_values_not_free_strings() -> None:
     """A refactor that hand-types 'save_first' somewhere must not drift."""
     risk, value = _paired(_RISK, _VALUE)
 
-    result = assign_quadrant(risk, value)
+    result = assign_quadrant(risk, value).labels
 
     # Enum membership, not string equality: a typo'd literal fails to construct.
     for label in result.unique():
@@ -96,7 +97,7 @@ def test_all_four_quadrants_are_reachable() -> None:
     """A rule that can never emit one cell would pass the 'exactly one' test."""
     risk, value = _paired(_RISK, _VALUE)
 
-    result = assign_quadrant(risk, value)
+    result = assign_quadrant(risk, value).labels
 
     assert set(result.unique()) == {q.value for q in Quadrant}
 
@@ -106,14 +107,14 @@ def test_all_four_quadrants_are_reachable() -> None:
 
 def test_raising_risk_never_moves_a_customer_to_a_lower_risk_quadrant() -> None:
     risk, value = _paired(_RISK, _VALUE)
-    baseline = assign_quadrant(risk, value)
+    baseline = assign_quadrant(risk, value).labels
 
-    # Lift the lowest-risk customer above the risk threshold, leaving the
-    # thresholds themselves fixed by holding the rest of the distribution.
+    # Lift the lowest-risk customer above the risk threshold. Stays inside
+    # [0, 1] - the axis is a probability and the domain check now enforces it.
     lifted = risk.copy()
-    lifted.iloc[0] = risk.max() * 10
+    lifted.iloc[0] = 0.99
 
-    result = assign_quadrant(lifted, value)
+    result = assign_quadrant(lifted, value).labels
 
     high_risk = {Quadrant.SAVE_FIRST.value, Quadrant.WATCH.value}
     assert baseline.iloc[0] not in high_risk
@@ -122,12 +123,12 @@ def test_raising_risk_never_moves_a_customer_to_a_lower_risk_quadrant() -> None:
 
 def test_raising_value_never_moves_a_customer_to_a_lower_value_quadrant() -> None:
     risk, value = _paired(_RISK, _VALUE)
-    baseline = assign_quadrant(risk, value)
+    baseline = assign_quadrant(risk, value).labels
 
     lifted = value.copy()
     lifted.iloc[0] = value.max() * 10
 
-    result = assign_quadrant(risk, lifted)
+    result = assign_quadrant(risk, lifted).labels
 
     high_value = {Quadrant.SAVE_FIRST.value, Quadrant.LOW_COST_KEEP.value}
     assert baseline.iloc[0] not in high_value
@@ -151,7 +152,7 @@ def test_the_customer_sitting_exactly_on_both_thresholds_goes_upper() -> None:
     assert thresholds.risk == pytest.approx(0.4)
     assert thresholds.value == pytest.approx(30.0)
 
-    result = assign_quadrant(risk, value)
+    result = assign_quadrant(risk, value).labels
 
     assert risk.iloc[3] == thresholds.risk  # genuinely on the edge
     assert result.iloc[3] == Quadrant.SAVE_FIRST.value
@@ -162,7 +163,7 @@ def test_the_customer_exactly_on_the_value_cut_counts_as_high_value() -> None:
     risk, value = _paired(_EDGE_RISK, _EDGE_VALUE)
 
     thresholds = quadrant_thresholds(risk, value)
-    result = assign_quadrant(risk, value)
+    result = assign_quadrant(risk, value).labels
 
     assert value.iloc[2] == thresholds.value
     assert result.iloc[2] == Quadrant.LOW_COST_KEEP.value
@@ -180,7 +181,7 @@ def test_the_customer_immediately_below_the_cut_stays_low_risk() -> None:
     risk, value = _paired(_EDGE_RISK, _EDGE_VALUE)
 
     thresholds = quadrant_thresholds(risk, value)
-    result = assign_quadrant(risk, value)
+    result = assign_quadrant(risk, value).labels
 
     assert risk.iloc[2] < thresholds.risk
     assert result.iloc[2] not in {Quadrant.SAVE_FIRST.value, Quadrant.WATCH.value}
@@ -195,7 +196,7 @@ def test_the_cut_separates_neighbouring_customers() -> None:
     risk, value = _paired(_RISK, _VALUE)
 
     thresholds = quadrant_thresholds(risk, value)
-    result = assign_quadrant(risk, value)
+    result = assign_quadrant(risk, value).labels
 
     high_risk = {Quadrant.SAVE_FIRST.value, Quadrant.WATCH.value}
     assert risk.iloc[5] < thresholds.risk < risk.iloc[6]
@@ -213,13 +214,13 @@ def test_a_strictly_increasing_transform_of_risk_changes_nothing() -> None:
     and the unresolved calibration debt (retro A2) has entered story 3-1.
     """
     risk, value = _paired(_RISK, _VALUE)
-    baseline = assign_quadrant(risk, value)
+    baseline = assign_quadrant(risk, value).labels
 
     # Monotone but strongly non-linear - exactly the shape of the measured
     # miscalibration (fine at the extremes, distorted in the middle).
     recalibrated = risk**3 / (risk**3 + (1 - risk) ** 3)
 
-    result = assign_quadrant(recalibrated, value)
+    result = assign_quadrant(recalibrated, value).labels
 
     pd.testing.assert_series_equal(result, baseline)
 
@@ -244,10 +245,10 @@ def test_rank_invariance_also_holds_when_the_cut_sits_on_a_data_point() -> None:
     thresholds = quadrant_thresholds(risk, value)
     assert risk.eq(thresholds.risk).any()  # the cut really is a data point
 
-    baseline = assign_quadrant(risk, value)
+    baseline = assign_quadrant(risk, value).labels
     recalibrated = risk**3 / (risk**3 + (1 - risk) ** 3)
 
-    result = assign_quadrant(recalibrated, value)
+    result = assign_quadrant(recalibrated, value).labels
 
     pd.testing.assert_series_equal(result, baseline)
 
@@ -272,7 +273,7 @@ def test_hardcoded_oracle_four_customers() -> None:
     assert thresholds.risk == pytest.approx(0.325)
     assert thresholds.value == pytest.approx(25.0)
 
-    result = assign_quadrant(risk, value)
+    result = assign_quadrant(risk, value).labels
 
     assert list(result) == [
         Quadrant.ACCEPT_CHURN.value,
@@ -286,7 +287,7 @@ def test_watch_cell_is_high_risk_and_low_value() -> None:
     """Pins the WATCH label to its cell - a relabelling mutation dies here."""
     risk, value = _paired([0.1, 0.2, 0.3, 0.4], [40.0, 30.0, 20.0, 10.0])
 
-    result = assign_quadrant(risk, value)
+    result = assign_quadrant(risk, value).labels
 
     # customer 3: risk 0.4 >= 0.325 (high), value 10 < 25.0 (low)
     assert result.iloc[3] == Quadrant.WATCH.value
@@ -378,7 +379,141 @@ def test_inputs_are_not_mutated() -> None:
 def test_determinism_repeated_calls_agree() -> None:
     risk, value = _paired(_RISK, _VALUE)
 
-    first = assign_quadrant(risk, value)
-    second = assign_quadrant(risk, value)
+    first = assign_quadrant(risk, value).labels
+    second = assign_quadrant(risk, value).labels
 
     pd.testing.assert_series_equal(first, second)
+
+
+# --- Review round 1 (external, 2026-07-22): rule validation reaches sweeps ----
+
+
+def test_an_unsupported_boundary_rule_is_refused_not_ignored() -> None:
+    """M7. `boundary` was declared in config and never read - a rule object
+    could claim `lower_exclusive` and silently get the standard `>=`."""
+    risk, value = _paired(_RISK, _VALUE)
+
+    with pytest.raises(ValueError, match="boundary"):
+        assign_quadrant(risk, value, rule=QUADRANT_RULE.replace(boundary="lower_exclusive"))
+
+
+def test_the_shipped_rule_declares_the_boundary_the_code_implements() -> None:
+    assert QUADRANT_RULE.boundary == BOUNDARY_UPPER_INCLUSIVE
+
+
+@pytest.mark.parametrize("quantile", [0.0, 1.0, -0.1, 1.5])
+def test_a_degenerate_quantile_passed_at_the_call_site_is_refused(quantile: float) -> None:
+    """M8. config validates its own constant at import time, but a sweep
+    building a rule with `replace()` bypassed that entirely."""
+    risk, value = _paired(_RISK, _VALUE)
+
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        assign_quadrant(risk, value, rule=QUADRANT_RULE.replace(risk_quantile=quantile))
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        assign_quadrant(risk, value, rule=QUADRANT_RULE.replace(value_quantile=quantile))
+
+
+# --- Review round 1: labels and thresholds cannot drift apart ----------------
+
+
+def test_labels_and_thresholds_come_from_one_computation() -> None:
+    """M9. The mart (4-1) must not be able to pair a full-population label
+    column with a cut computed on a filtered subset."""
+    risk, value = _paired(_RISK, _VALUE)
+
+    assignment = assign_quadrant(risk, value)
+
+    assert assignment.population_size == len(risk)
+    assert assignment.rule == QUADRANT_RULE
+    standalone = quadrant_thresholds(risk, value)
+    assert assignment.thresholds == standalone
+    # The labels really were cut at the thresholds carried alongside them.
+    high_risk = {Quadrant.SAVE_FIRST.value, Quadrant.WATCH.value}
+    for score, label in zip(risk, assignment.labels, strict=True):
+        assert (score >= assignment.thresholds.risk) == (label in high_risk)
+
+
+# --- Review round 1: the rank-only claim has a boundary ----------------------
+
+
+def test_a_plateau_producing_calibration_DOES_change_assignments() -> None:
+    """M10. The counter-example that narrows AC6.
+
+    Isotonic regression - the likeliest outcome of retro action A2, and the
+    method already used to measure the miscalibration - is monotone
+    NON-decreasing: it collapses distinct scores onto shared values. A plateau
+    spanning the cut carries everyone on it across.
+
+    This test asserts the FAILURE, deliberately. The report is not allowed to
+    say "A2 cannot change a single assignment"; it may only say that a strictly
+    increasing recalibration cannot. If someone later makes the assignment
+    robust to plateaus, this test should fail and the docs be widened again.
+    """
+    risk, value = _paired(_EDGE_RISK, _EDGE_VALUE)
+    baseline = assign_quadrant(risk, value).labels
+
+    flattened = _series([0.0, 0.0, 0.0, 0.0, 1.0], "churn_prob")
+    result = assign_quadrant(flattened, value).labels
+
+    assert not result.equals(baseline)
+    high_risk = {Quadrant.SAVE_FIRST.value, Quadrant.WATCH.value}
+    assert (baseline.isin(high_risk)).sum() == 2
+    assert (result.isin(high_risk)).sum() == 5
+
+
+# --- Review round 1: axis domain --------------------------------------------
+
+
+def test_infinity_on_the_risk_axis_is_refused() -> None:
+    """M11. One inf drags the cut to inf; an all-inf axis makes it NaN and
+    labels the entire base low behind a RuntimeWarning."""
+    risk, value = _paired([0.1, 0.2, 0.3, float("inf")], [1.0, 2.0, 3.0, 4.0])
+
+    with pytest.raises(ValueError, match="non-finite"):
+        assign_quadrant(risk, value)
+
+
+def test_an_all_infinite_axis_is_refused_before_the_quantile_goes_nan() -> None:
+    risk, value = _paired([float("inf")] * 4, [1.0, 2.0, 3.0, 4.0])
+
+    with pytest.raises(ValueError, match="non-finite"):
+        assign_quadrant(risk, value)
+
+
+def test_infinity_on_the_value_axis_is_refused() -> None:
+    risk, value = _paired([0.1, 0.2, 0.3, 0.4], [1.0, 2.0, 3.0, float("inf")])
+
+    with pytest.raises(ValueError, match="non-finite"):
+        assign_quadrant(risk, value)
+
+
+@pytest.mark.parametrize("rogue", [-0.4, 1.7])
+def test_a_risk_score_outside_zero_one_is_refused(rogue: float) -> None:
+    """M12. `churn_prob` is a probability by contract - a score on some other
+    scale would still produce perfectly plausible quadrants."""
+    risk, value = _paired([0.1, 0.2, rogue], [1.0, 2.0, 3.0])
+
+    with pytest.raises(ValueError, match=r"outside \[0, 1\]"):
+        assign_quadrant(risk, value)
+
+
+def test_the_value_axis_has_no_range_check() -> None:
+    """Deliberate asymmetry: `customer_value()` promises a raw scale, not
+    non-negativity, and this module may not invent a contract for it (AD-11)."""
+    risk, value = _paired([0.1, 0.2, 0.3, 0.4], [-50.0, 0.0, 10.0, 20.0])
+
+    assign_quadrant(risk, value)  # must not raise
+
+
+# --- Review round 1: population integrity ------------------------------------
+
+
+def test_a_duplicated_customer_index_is_refused() -> None:
+    """M13. Both axes sharing the same duplication passes the index-equality
+    check, so a fan-out join would hand one customer two official quadrants
+    and inflate the population the cuts are computed from."""
+    risk = _series([0.1, 0.9, 0.2, 0.3], "churn_prob", index=[101, 101, 102, 103])
+    value = _series([100.0, 200.0, 300.0, 400.0], "value", index=[101, 101, 102, 103])
+
+    with pytest.raises(ValueError, match="duplicate"):
+        assign_quadrant(risk, value)

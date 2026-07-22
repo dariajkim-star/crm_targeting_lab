@@ -103,16 +103,22 @@ class Quadrant(str, Enum):
 class QuadrantRule(NamedTuple):
     """How the two axes are cut. A METHOD, not a pair of measured edges.
 
-    Why NamedTuple and not @dataclass
-    ---------------------------------
-    THIS FILE CANNOT CONTAIN A DATACLASS. The AD-4 guard test executes this
-    module's source under a synthetic module name that is absent from
-    `sys.modules` (to prove the import-time grid check really bites). While
-    building a dataclass, `dataclasses` resolves each field annotation to check
-    for ClassVar/InitVar by looking the class's module up in `sys.modules` -
-    which returns None there and raises AttributeError, taking the guard test
-    down with it. NamedTuple reads `__annotations__` directly and is unaffected.
-    A future story adding structured config here must keep this constraint.
+    Why NamedTuple and not @dataclass (an incidental constraint, not a rule)
+    -----------------------------------------------------------------------
+    The AD-4 guard test executes this module's source under a synthetic module
+    name absent from `sys.modules`, to prove the import-time grid check really
+    bites. Building a dataclass under those conditions raises AttributeError:
+    `dataclasses` resolves each field annotation to check for ClassVar/InitVar
+    by looking the class's module up in `sys.modules`, and gets None. Measured
+    while writing this story. NamedTuple reads `__annotations__` directly and
+    is unaffected, and is a good fit here anyway - immutable, tiny, tuple-shaped.
+
+    This is a property of how that ONE test loads the file, not an
+    architectural prohibition. Do not read it as "config may never hold a
+    dataclass": the guard could register the synthetic module first
+    (`sys.modules[name] = types.ModuleType(name)` around the `exec`) and the
+    constraint disappears. Noted so a later story reaches for the right fix
+    rather than rediscovering the crash.
 
     AD-1 vs AD-12, and why this holds only quantile LEVELS
     -----------------------------------------------------
@@ -132,15 +138,30 @@ class QuadrantRule(NamedTuple):
     The value axis is split at its median, the textbook 2x2 cut, and
     `customer_value` is spread evenly enough for the median to mean something.
 
-    The risk axis is NOT. Measured on the 8-predictor scored artifact, the
-    median `churn_prob` is 0.0051 while the real attrition rate is 0.1607: a
-    median cut would stamp "high risk" on customers with a 0.5% probability of
-    leaving, and the label would be worthless the moment anyone checked. The
-    75th percentile keeps the upper cell meaningful.
+    The risk axis is not. `risk_quantile = 0.75` is a POLICY ASSUMPTION - "the
+    top quarter are the high-risk candidates" - and NOT a value shown to be
+    optimal. Two things support it and neither proves it:
 
-    Like `SEGMENT_K`, this is an analyst's choice informed by the distribution,
-    not a fitted statistic - 0.75 is a convention, and the cut it produces
-    (0.12684 on the current artifact) is computed at runtime and reported.
+      - a median cut puts HALF the base in the upper cells, which is useless
+        for prioritising a campaign, and the resulting group is 32% attriters
+        against 64% at 0.75 (in-sample, `quadrant-report-3-1.md`);
+      - recall of actual attriters stays essentially total from 0.50 through
+        0.80 and only collapses past it (0.9951 at 0.80, 0.6177 at 0.90).
+
+    Measured honestly, 0.80 buys higher precision (0.799 vs 0.642) at nearly
+    the same recall, so 0.75 is a defensible point in a band rather than the
+    best point in it. Story 3-4 should sweep this axis alongside success rate
+    and cost; until it does, treat the quadrant counts as one scenario.
+
+    Note the argument above is deliberately RANK-based. An earlier version
+    justified the choice by reading 0.0051 as "a 0.5% chance of leaving" - which
+    contradicts this project's own position that the uncalibrated score's
+    magnitude means little. The evidence used here is the realised composition
+    of the resulting groups, which survives any strictly monotone rescaling.
+
+    Like `SEGMENT_K`, the number is an analyst's choice informed by the data,
+    not a fitted statistic - and the cut it produces (0.12684 on the current
+    artifact) is computed at runtime and reported, never parked here.
 
     Boundary
     --------
