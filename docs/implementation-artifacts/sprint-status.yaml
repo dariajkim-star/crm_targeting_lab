@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-21 (1-7 review; 예측자 9개 확장 + SHAP 요인/액션; 267 passed)
+# last_updated: 2026-07-22 (1-7 done -> epic-1 done; 외부리뷰 4건 반영, 최종 8피처; 272 passed)
 # project: crm-targeting-lab
 # project_key: NOKEY
 # tracking_system: file-system
@@ -94,7 +94,7 @@ tracking_system: file-system
 story_location: docs/implementation-artifacts
 
 development_status:
-  epic-1: in-progress
+  epic-1: done
   1-1a-scaffolding-config-structure-guards: done
   1-1b-freshness-atomic-write-data-acquisition: done
   1-2-customer-value-single-definition: done
@@ -106,7 +106,7 @@ development_status:
   # identity(AD-5 meta.json/artifact_id) that 1-7 depends on.
   1-6a-churn-model-baseline-lift: done
   1-6b-artifact-identity-meta: done
-  1-7-shap-drivers-retention-actions: review
+  1-7-shap-drivers-retention-actions: done
   epic-1-retrospective: optional
 
   epic-2: backlog
