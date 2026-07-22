@@ -169,9 +169,11 @@ def test_stage_records_the_seed_it_actually_trained_with(tmp_path, monkeypatch):
     stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
 
     meta = json.loads(model_meta_path(model_p).read_text(encoding="utf-8"))
-    trained_with_7 = fit_and_compare(pd.read_parquet(feat_p), pd.read_parquet(raw_p), seed=7).model
+    trained_with_7 = fit_and_compare(pd.read_parquet(feat_p), pd.read_parquet(raw_p), seed=7)
     assert meta["random_seed"] == 7
-    assert artifact_id(model_p.read_bytes()) == artifact_id(serialize_model(trained_with_7))
+    # The identity covers the {model, calibrator} BUNDLE (story 3-0): hashing the
+    # model alone would let the calibrator be swapped without the id moving.
+    assert artifact_id(model_p.read_bytes()) == artifact_id(serialize_model(trained_with_7.bundle()))
 
 
 def test_stage_skips_a_consistent_pair(tmp_path):
@@ -192,7 +194,7 @@ def test_stage_skips_a_consistent_pair(tmp_path):
 
 def test_stage_output_is_deterministic_across_two_runs(tmp_path):
     # AD-7 acceptance as a REGRESSION TEST (review: the manual run log is not a
-    # test). Two independent output paths, identical churn_prob.
+    # test). Two independent output paths, identical churn_score.
     stage = _load_stage_03()
     feat_p, raw_p = _seed_inputs(tmp_path)
     out_a = (tmp_path / "a_model.joblib", tmp_path / "a_scored.parquet", tmp_path / "a_shap.parquet")
@@ -207,7 +209,7 @@ def test_stage_output_is_deterministic_across_two_runs(tmp_path):
 # --- story 1-7: SHAP output is bound to the same training run ----------------
 
 def test_stage_writes_shap_bound_to_the_same_artifact(tmp_path):
-    # AD-5: churn_prob and its explanation must be provably from one model.
+    # AD-5: churn_score and its explanation must be provably from one model.
     stage = _load_stage_03()
     feat_p, raw_p = _seed_inputs(tmp_path)
     model_p = tmp_path / "churn_model.joblib"

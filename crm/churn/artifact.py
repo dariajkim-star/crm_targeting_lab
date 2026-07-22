@@ -242,7 +242,7 @@ def verify_artifact_identity(expected: str, actual: str, *, context: str) -> Non
     """Fail immediately when two ids describe different model content (AD-5).
 
     A warning would be worse than useless here: the whole point is that a
-    ``churn_prob`` and an explanation of it must not be presented together
+    ``churn_score`` and an explanation of it must not be presented together
     unless they describe the same model.
     """
     if expected != actual:

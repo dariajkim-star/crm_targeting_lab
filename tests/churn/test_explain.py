@@ -124,7 +124,11 @@ def test_explains_the_positive_class_not_the_negative_one():
     # class axis were picked, the relationship inverts.
     result, _ = _fitted()
     frame = shap_frame(result.model, result.x)
-    scores = result.scored.set_index("CLIENTNUM")["churn_prob"]
+    # The FINAL model's own scores, not the persisted out-of-fold column: this
+    # test checks that `shap_frame` explains `result.model`, so the ordering it
+    # is checked against must come from that same model (story 3-0 split the
+    # two - the persisted `churn_score` is produced by the fold models).
+    scores = pd.Series(result.model.predict_proba(result.x)[:, 1], index=result.x.index)
     riskiest = scores.nlargest(30).index
     safest = scores.nsmallest(30).index
     risky_push = frame.loc[riskiest].to_numpy().sum(axis=1).mean()

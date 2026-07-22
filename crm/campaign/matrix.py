@@ -25,29 +25,31 @@ and never leaks back into the value definition.
 
 Rank, not magnitude - and the LIMIT of that claim (story AC6)
 ------------------------------------------------------------
-The rule reads the ORDER of `churn_prob`, never its calibrated size: both cuts
-are quantiles. The scored artifact is in-sample and uncalibrated (mean 0.1976
-against a 0.1607 attrition rate, with the 8th decile off by roughly 20x), and
-whether to recalibrate is retro action A2, still undecided.
+The rule reads the ORDER of `churn_score`, never a magnitude: both cuts are
+quantiles. `churn_score` is the RAW OUT-OF-FOLD score (story 3-0) - deliberately
+the uncalibrated one. Its calibrated sibling `churn_prob_calibrated` exists in
+the same frame and is what story 3-2 multiplies by money; a single column cannot
+honestly do both jobs.
 
 A STRICTLY increasing transform cannot move any customer across a quantile, so
-that class of recalibration leaves every assignment untouched.
+that class of recalibration leaves every assignment untouched. Platt scaling -
+the method story 3-0 adopted - is exactly that, and it was chosen partly for
+this reason: measured on the real artifact, calibrating with Platt reassigns
+ZERO customers.
 
-THAT IS NOT THE SAME AS "A2 CANNOT AFFECT THIS MODULE". An earlier version of
-this docstring claimed exactly that and it is false: isotonic regression - the
-most likely calibration choice, and the one already used to MEASURE the
-miscalibration - is monotone NON-decreasing and collapses distinct scores onto
-shared plateaus. A plateau spanning the cut changes who clears it. Measured:
+THAT IS NOT A GENERAL GUARANTEE ABOUT CALIBRATION. An earlier version of this
+docstring claimed calibration could never affect this module and it was false:
+isotonic regression is monotone NON-decreasing and collapses distinct scores
+onto shared plateaus. A plateau spanning the cut changes who clears it:
 
     risk       [0.1, 0.2, 0.3, 0.4, 0.5]  -> cut 0.4, two customers high
     calibrated [0.0, 0.0, 0.0, 0.0, 1.0]  -> cut 0.0, ALL FIVE high
 
-So the honest contract is: **strictly increasing recalibration is safe here;
-plateau-producing recalibration is not.** If A2 lands on isotonic, story 3-1
-must be revisited - either by assigning on the raw ranking score and reserving
-the calibrated probability for 3-2's expected-savings arithmetic, or by
-re-deriving the cuts. `test_matrix.py` pins both directions: invariance under a
-strictly increasing transform, and the plateau counter-example.
+On the real artifact isotonic collapsed 10,127 scores onto 95 values, parked 101
+customers exactly on the cut and reassigned 58. That is why the input here is
+the raw score and not a calibrated one, and why swapping the calibration method
+is not a local decision. `test_matrix.py` pins both directions: invariance under
+a strictly increasing transform, and the plateau counter-example.
 
 Purity (AD-1/AD-9): inputs are never modified, nothing is written to disk, no
 global state. Encoding: runtime strings stay ASCII.
@@ -69,7 +71,7 @@ __all__ = [
     "quadrant_thresholds",
 ]
 
-_RISK_AXIS = "churn_prob"
+_RISK_AXIS = "churn_score"
 _VALUE_AXIS = "customer value"
 
 
@@ -180,21 +182,21 @@ def _validate_axis(series: pd.Series, axis_name: str) -> None:
     # value definition is not this module's to extend).
 
 
-def _validate_pair(churn_prob: pd.Series, value: pd.Series) -> None:
-    if len(churn_prob) != len(value):
+def _validate_pair(churn_score: pd.Series, value: pd.Series) -> None:
+    if len(churn_score) != len(value):
         raise ValueError(
             f"assign_quadrant needs one risk score per customer value: got "
-            f"{len(churn_prob)} and {len(value)}."
+            f"{len(churn_score)} and {len(value)}."
         )
-    if not churn_prob.index.equals(value.index):
+    if not churn_score.index.equals(value.index):
         raise ValueError(
             "assign_quadrant needs the two axes to share an index. pandas "
             "would ALIGN mismatched labels and fill the gaps with NaN, so a "
             "join done wrong upstream would surface as a plausible-looking "
             "matrix over the wrong customers."
         )
-    if not churn_prob.index.is_unique:
-        duplicated = churn_prob.index[churn_prob.index.duplicated()].unique()
+    if not churn_score.index.is_unique:
+        duplicated = churn_score.index[churn_score.index.duplicated()].unique()
         raise ValueError(
             f"assign_quadrant received a duplicated customer index "
             f"{duplicated[:5].tolist()}. A fan-out join would otherwise give "
@@ -205,7 +207,7 @@ def _validate_pair(churn_prob: pd.Series, value: pd.Series) -> None:
 
 
 def quadrant_thresholds(
-    churn_prob: pd.Series,
+    churn_score: pd.Series,
     value: pd.Series,
     *,
     rule: QuadrantRule = QUADRANT_RULE,
@@ -217,7 +219,7 @@ def quadrant_thresholds(
     data owns the edges (AD-1). See ``QuadrantRule`` for the full argument.
 
     Args:
-        churn_prob: Risk score per customer. Only its ORDER is used.
+        churn_score: Risk score per customer. Only its ORDER is used.
         value: Customer value per customer, the persisted ``customer_value``
             output on its raw scale (AD-11 - not recomputed, not re-weighted).
         rule: The cutting rule. Defaults to the single config constant; a
@@ -231,18 +233,18 @@ def quadrant_thresholds(
             mismatched indexes.
     """
     _validate_rule(rule)
-    _validate_axis(churn_prob, _RISK_AXIS)
+    _validate_axis(churn_score, _RISK_AXIS)
     _validate_axis(value, _VALUE_AXIS)
-    _validate_pair(churn_prob, value)
+    _validate_pair(churn_score, value)
 
     return QuadrantThresholds(
-        risk=float(churn_prob.quantile(rule.risk_quantile)),
+        risk=float(churn_score.quantile(rule.risk_quantile)),
         value=float(value.quantile(rule.value_quantile)),
     )
 
 
 def assign_quadrant(
-    churn_prob: pd.Series,
+    churn_score: pd.Series,
     value: pd.Series,
     *,
     rule: QuadrantRule = QUADRANT_RULE,
@@ -254,9 +256,11 @@ def assign_quadrant(
     the operator below.
 
     Args:
-        churn_prob: Risk score per customer, a probability in ``[0, 1]``. Only
-            its ORDER is used - see the module docstring for the exact limit of
-            that claim under recalibration.
+        churn_score: Raw out-of-fold risk score per customer, in ``[0, 1]``.
+            Only its ORDER is used - see the module docstring for the exact
+            limit of that claim under recalibration. Story 3-0 keeps this
+            separate from ``churn_prob_calibrated``, which 3-2 multiplies by
+            money; a single column cannot honestly serve both.
         value: Customer value per customer (AD-11: consumed, not recomputed).
         rule: The cutting rule; defaults to the config constant.
 
@@ -272,16 +276,16 @@ def assign_quadrant(
             non-finite values, risk outside ``[0, 1]``, mismatched lengths,
             mismatched indexes, or a duplicated customer index.
     """
-    thresholds = quadrant_thresholds(churn_prob, value, rule=rule)
+    thresholds = quadrant_thresholds(churn_score, value, rule=rule)
 
     # `>=`: the upper cell owns its edge (AD-12, AC3).
-    high_risk = churn_prob >= thresholds.risk
+    high_risk = churn_score >= thresholds.risk
     high_value = value >= thresholds.value
 
     # Built from the two booleans rather than chained conditions so that all
     # four cells are constructed by the same expression - a relabelling typo
     # cannot hide in a branch that the common case never takes.
-    quadrants = pd.Series(Quadrant.ACCEPT_CHURN.value, index=churn_prob.index, dtype=object)
+    quadrants = pd.Series(Quadrant.ACCEPT_CHURN.value, index=churn_score.index, dtype=object)
     quadrants[high_risk & high_value] = Quadrant.SAVE_FIRST.value
     quadrants[high_risk & ~high_value] = Quadrant.WATCH.value
     quadrants[~high_risk & high_value] = Quadrant.LOW_COST_KEEP.value

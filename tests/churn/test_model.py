@@ -27,7 +27,7 @@ from crm.churn.model import (
     make_baseline,
     make_xgboost,
     pr_auc_cv,
-    score_customers,
+    oof_scores,
 )
 
 
@@ -175,14 +175,71 @@ def test_inputs_are_not_mutated():
     pd.testing.assert_frame_equal(raw, rbefore)
 
 
-def test_score_customers_preserves_index():
+def test_oof_scores_preserve_index_and_range():
     feat = _features(40, seed=9)
     raw = _raw_with_signal(feat, seed=9)
     x, y = build_xy(feat, raw)
-    model = make_xgboost(y, RANDOM_SEED).fit(x, y)
-    scores = score_customers(model, x)
+    scores = oof_scores(x, y, seed=RANDOM_SEED)
     assert list(scores.index) == list(x.index)
     assert scores.between(0, 1).all()
+    assert scores.name == "churn_score"
+
+
+def test_oof_scores_come_from_models_that_did_not_see_the_customer():
+    """The property that makes them out-of-fold rather than a rename.
+
+    A model that memorised its training rows separates them far better than one
+    that did not. So in-sample scores must be MORE extreme (further from the
+    base rate) than out-of-fold scores on the same data - if the two agreed,
+    nothing would have been held out.
+    """
+    feat = _features(200, seed=11)
+    raw = _raw_with_signal(feat, seed=11)
+    x, y = build_xy(feat, raw)
+
+    oof = oof_scores(x, y, seed=RANDOM_SEED)
+    in_sample = pd.Series(
+        make_xgboost(y, RANDOM_SEED).fit(x, y).predict_proba(x)[:, 1], index=x.index
+    )
+
+    assert (in_sample - y.mean()).abs().mean() > (oof - y.mean()).abs().mean()
+
+
+def test_oof_scores_are_deterministic():
+    feat = _features(60, seed=3)
+    raw = _raw_with_signal(feat, seed=3)
+    x, y = build_xy(feat, raw)
+    pd.testing.assert_series_equal(
+        oof_scores(x, y, seed=RANDOM_SEED), oof_scores(x, y, seed=RANDOM_SEED)
+    )
+
+
+def test_a_different_seed_changes_the_folds_and_the_scores():
+    feat = _features(60, seed=3)
+    raw = _raw_with_signal(feat, seed=3)
+    x, y = build_xy(feat, raw)
+    assert not oof_scores(x, y, seed=RANDOM_SEED).equals(oof_scores(x, y, seed=RANDOM_SEED + 1))
+
+
+def test_scored_frame_carries_both_tracks_and_never_the_old_name():
+    """Story 3-0 contract: rank column and probability column, separately."""
+    feat = _features(60, seed=5)
+    raw = _raw_with_signal(feat, seed=5)
+    result = fit_and_compare(feat, raw, seed=RANDOM_SEED)
+
+    assert list(result.scored.columns) == ["CLIENTNUM", "churn_score", "churn_prob_calibrated"]
+    assert "churn_prob" not in result.scored.columns
+    # The calibrated column is a probability; the raw one is not claimed to be.
+    assert result.scored["churn_prob_calibrated"].between(0, 1).all()
+
+
+def test_the_bundle_carries_the_calibrator_so_identity_covers_it():
+    feat = _features(60, seed=5)
+    raw = _raw_with_signal(feat, seed=5)
+    result = fit_and_compare(feat, raw, seed=RANDOM_SEED)
+
+    assert set(result.bundle()) == {"model", "calibrator"}
+    assert result.bundle()["calibrator"] is result.calibrator
 
 
 # --- review round: label vocabulary / key sets / CV validity (High 2-3, Med 4) -

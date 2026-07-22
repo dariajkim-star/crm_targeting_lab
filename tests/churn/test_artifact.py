@@ -323,7 +323,7 @@ def test_attach_artifact_id_stamps_every_row_without_mutating_the_input():
 
     stamped = attach_artifact_id(result.scored, "a" * 64)
 
-    assert list(stamped.columns) == ["CLIENTNUM", "churn_prob", "artifact_id"]
+    assert list(stamped.columns) == ["CLIENTNUM", "churn_score", "churn_prob_calibrated", "artifact_id"]
     assert stamped["artifact_id"].unique().tolist() == ["a" * 64]
     pd.testing.assert_frame_equal(result.scored, before)
 
@@ -461,3 +461,34 @@ def test_identity_is_consistent_is_fail_closed(tmp_path, break_it):
         scored_p.unlink()
 
     assert identity_is_consistent(model_p, scored_p) is False
+
+
+# --- story 3-0: identity covers the calibrator, not just the model ------------
+
+
+def test_swapping_only_the_calibrator_changes_the_artifact_id():
+    """AC4. The reason the artifact is a bundle rather than the model alone.
+
+    If ``artifact_id`` hashed only the estimator, a different calibration could
+    be shipped under an identity record that still vouched for the old pairing -
+    and every downstream number derived from ``churn_prob_calibrated`` would be
+    attributed to a run that never produced it.
+    """
+    features, raw = _frames()
+    result = fit_and_compare(features, raw)
+
+    same = artifact_id(serialize_model(result.bundle()))
+    tampered = artifact_id(serialize_model({"model": result.model, "calibrator": None}))
+
+    assert same == artifact_id(serialize_model(result.bundle()))  # stable
+    assert tampered != same
+
+
+def test_the_model_alone_hashes_differently_from_the_bundle():
+    """Guards against a refactor quietly reverting to model-only identity."""
+    features, raw = _frames()
+    result = fit_and_compare(features, raw)
+
+    assert artifact_id(serialize_model(result.model)) != artifact_id(
+        serialize_model(result.bundle())
+    )

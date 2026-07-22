@@ -1,7 +1,7 @@
-"""Stage 03: churn-RISK classifier + scores + SHAP + AD-5 identity (AD-6: snapshot
-label, never a forecast). SHAP is computed HERE and only here (AD-5); later stages
-read it. Skips only when model bytes, record and BOTH derived outputs agree.
-"""
+"""Stage 03: churn-RISK classifier, OUT-OF-FOLD scores + Platt calibration, SHAP,
+AD-5 identity (AD-6: snapshot label, not a forecast). The artifact is a
+{model, calibrator} bundle so identity covers both fitted objects. SHAP is
+computed HERE only; skips when bundle, record and BOTH derived outputs agree."""
 import logging
 import sys
 from pathlib import Path
@@ -26,7 +26,7 @@ def main(input_paths: list[Path], output_paths: list[Path]) -> None:
         return
     seed = config.RANDOM_SEED  # ONE value: training and the record cannot disagree (AD-7)
     result = fit_and_compare(pd.read_parquet(features_src), pd.read_parquet(raw_src), seed=seed)
-    aid = save_model_with_identity(result.model, model_out, inputs=[features_src, raw_src],
+    aid = save_model_with_identity(result.bundle(), model_out, inputs=[features_src, raw_src],
                                    seed=seed, metrics=result.metrics())
     meta = build_meta("03_train_churn", [features_src, raw_src], rows=len(result.scored))
     write_parquet_with_meta(scored_out, attach_artifact_id(result.scored, aid), meta)

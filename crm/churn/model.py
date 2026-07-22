@@ -31,11 +31,12 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import StandardScaler
 from xgboost import XGBClassifier
 
+from crm.churn.calibrate import CALIBRATED_COLUMN, apply_calibration, fit_calibrator
 from crm.config import CHURN_CV_FOLDS, CHURN_TREE_METHOD, RANDOM_SEED
 
 __all__ = [
@@ -47,13 +48,18 @@ __all__ = [
     "make_xgboost",
     "pr_auc_cv",
     "lift",
-    "score_customers",
+    "oof_scores",
+    "SCORE_COLUMN",
     "attach_artifact_id",
     "fit_and_compare",
     "ChurnResult",
 ]
 
 _ID_COLUMN = "CLIENTNUM"
+# The raw out-of-fold ranking signal. Named `churn_score`, not `churn_prob`:
+# it is not a probability, and story 3-0 stopped letting the name claim it was
+# (ARCHITECTURE-SPINE AD-5 amended in the same change).
+SCORE_COLUMN = "churn_score"
 _LABEL_COLUMN = "Attrition_Flag"
 _POSITIVE_LABEL = "Attrited Customer"
 # The label's full vocabulary. Anything else - a typo, trailing whitespace,
@@ -293,19 +299,35 @@ def lift(baseline: float, model: float) -> float:
     return (model - baseline) / baseline
 
 
-def score_customers(model: object, x: pd.DataFrame) -> pd.Series:
-    """Cross-sectional churn-RISK score per customer, indexed like ``x``.
+def oof_scores(x: pd.DataFrame, y: pd.Series, seed: int = RANDOM_SEED) -> pd.Series:
+    """Out-of-fold churn-RISK score per customer (story 3-0, AC1).
 
-    HONESTY (review Med-6): the column is named ``churn_prob`` because the
-    architecture spine (AD-5, pipeline diagram) fixes that name, but the value is
-    an UNCALIBRATED, IN-SAMPLE risk score: the final model is fit on all
-    customers and scores those same customers, and ``scale_pos_weight`` reweights
-    the loss so ``predict_proba`` does not track the true attrition rate.
-    Treat it as a RANKING signal (who is riskier than whom), not a calibrated
-    probability. Calibration is out of scope here and stated in the report.
+    Every customer is scored by a model that did NOT train on them. Scoring the
+    training population with a model fit on all of it - which is what this
+    module used to persist - lets the model recognise customers it memorised and
+    inflates both the scores and any figure derived from them.
+
+    Measured on the current artifact: in-sample mean 0.1976 against an observed
+    attrition rate of 0.1607, and a pooled PR-AUC of 0.9825 against 0.9507
+    out-of-fold. The reports never used the inflated number - ``pr_auc_cv`` has
+    always scored held-out folds - so the persisted column was the last place
+    the optimism survived.
+
+    Why this is the right column for THIS project: the SPEC's non-goals exclude
+    real-time scoring and a serving API, so the only consumer is a batch
+    analysis of this fixed customer base. For that, the honest question is "how
+    would this model rank a customer it had not seen", which is exactly what
+    out-of-fold answers.
+
+    Determinism (AD-7): the fold split and every fold model receive ``seed``.
+
+    Returns:
+        ``Series[float]`` named ``churn_score``, indexed exactly like ``x``.
+        A RANKING signal - see :mod:`crm.churn.calibrate` for the probability.
     """
-    proba = model.predict_proba(x)[:, 1]
-    return pd.Series(proba, index=x.index, name="churn_prob")
+    folds = StratifiedKFold(n_splits=CHURN_CV_FOLDS, shuffle=True, random_state=seed)
+    proba = cross_val_predict(make_xgboost(y, seed), x, y, cv=folds, method="predict_proba")
+    return pd.Series(proba[:, 1], index=x.index, name=SCORE_COLUMN)
 
 
 def attach_artifact_id(scored: pd.DataFrame, artifact_id: str) -> pd.DataFrame:
@@ -328,7 +350,8 @@ class ChurnResult:
     and the CV comparison figures for the report."""
 
     model: XGBClassifier
-    scored: pd.DataFrame  # CLIENTNUM + churn_prob
+    calibrator: object  # Platt, fitted on the OOF scores (story 3-0)
+    scored: pd.DataFrame  # CLIENTNUM + churn_score + churn_prob_calibrated
     x: pd.DataFrame  # the predictors the model was fit on, CLIENTNUM-indexed:
     # SHAP must explain THESE rows in THIS order, and rebuilding them in the
     # stage would risk explaining a differently-assembled X than was scored.
@@ -336,6 +359,17 @@ class ChurnResult:
     xgboost_pr_auc: float
     pr_auc_lift: float
     positive_rate: float
+
+    def bundle(self) -> dict[str, object]:
+        """The AD-5 artifact: everything one training run produced.
+
+        The calibrator is a SECOND fitted object. Hashing only the model would
+        let it be swapped without ``artifact_id`` changing, and the identity
+        record would keep vouching for a pairing that no longer exists. P1
+        settled the same question the same way - its challenger artifact is a
+        {model, calibrator} bundle (P1 story 1.5 code review).
+        """
+        return {"model": self.model, "calibrator": self.calibrator}
 
     def metrics(self) -> dict[str, float]:
         """The comparison figures as a machine-readable record (AD-5 meta).
@@ -354,18 +388,42 @@ class ChurnResult:
 
 
 def fit_and_compare(features: pd.DataFrame, raw: pd.DataFrame, seed: int = RANDOM_SEED) -> ChurnResult:
-    """Build X/y, CV-compare baseline vs XGBoost, then fit XGBoost on all data
-    and score every customer. Deterministic given ``seed``."""
+    """Build X/y, CV-compare baseline vs XGBoost, produce out-of-fold scores and
+    their Platt calibration, then fit the final XGBoost. Deterministic given
+    ``seed``.
+
+    Two scoring passes on purpose. ``pr_auc_cv`` is left untouched so the
+    headline comparison in the 1-6a report keeps meaning exactly what it meant
+    (mean average-precision across folds); ``oof_scores`` runs its own pass to
+    produce per-customer values. The duplicate fold training costs seconds and
+    buys report continuity - measured pooled OOF PR-AUC 0.9507 against the
+    per-fold mean 0.9508, so the two agree without being the same estimator.
+    """
     x, y = build_xy(features, raw)
     baseline_auc = pr_auc_cv(lambda yy, s: make_baseline(yy, s), x, y, seed)
     xgb_auc = pr_auc_cv(lambda yy, s: make_xgboost(yy, s), x, y, seed)
 
+    # Out-of-fold first: the calibrator must be fitted on scores the model did
+    # not memorise, or the correction is learned from the same overconfidence it
+    # exists to remove (story 3-0, AC2).
+    scores = oof_scores(x, y, seed)
+    calibrator = fit_calibrator(scores, y)
+    calibrated = apply_calibration(calibrator, scores)
+
+    # The final model is fit on everything. It is what SHAP explains and what
+    # the artifact carries; it is NOT what the persisted scores come from.
     model = make_xgboost(y, seed)
     model.fit(x, y)
-    scores = score_customers(model, x)
-    scored = pd.DataFrame({_ID_COLUMN: x.index.to_numpy(), "churn_prob": scores.to_numpy()})
+    scored = pd.DataFrame(
+        {
+            _ID_COLUMN: x.index.to_numpy(),
+            SCORE_COLUMN: scores.to_numpy(),
+            CALIBRATED_COLUMN: calibrated.to_numpy(),
+        }
+    )
     return ChurnResult(
         model=model,
+        calibrator=calibrator,
         scored=scored,
         x=x,
         baseline_pr_auc=baseline_auc,

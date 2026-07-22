@@ -80,14 +80,28 @@ P1(credit-scorecard-lab)의 `scorecard/` + `pipelines/` 조합을 계승하되, 
   - **그리드는 대표값을 포함해야 한다** — `assert RETENTION_SUCCESS_RATE in RETENTION_GRID`, `COST_PER_CONTACT in COST_GRID`를 import 시점에 실행해, 위반 시 파이프라인이 뜨지 않는다.
   - 파라미터 스윕이 필요하면 파일이 아니라 **함수 인자**로 주입한다.
 
-### AD-5 — 이탈확률·SHAP 단일 아티팩트 + 정체성 고정
+### AD-5 — 이탈점수·SHAP 단일 아티팩트 + 정체성 고정
 
-- **Binds:** CAP-2, CAP-3, CAP-5
-- **Prevents:** 마트의 `churn_prob`와 SHAP 해석이 서로 다른 학습 실행에서 나와, "이 고객이 위험한 이유"가 실제 확률과 어긋나는 것. `models/`는 gitignore라 사후 탐지가 불가능하다
+> **(2026-07-22 개정 — 스토리 3-0)** 원안은 산출 컬럼을 `churn_prob` **하나**로 두었다. 두 소비자가
+> 서로 다른 것을 요구한다는 것이 뒤늦게 드러났다 — 2×2 판정(CAP-5)은 **순위**만 필요하고, 기대절감액
+> (CAP-6)은 숫자를 **실제 확률로 곱한다**. 하나의 컬럼이 둘을 정직하게 겸할 수 없다.
+> 개정 내용: ①컬럼을 **`churn_score`(raw OOF, 순위 전용) / `churn_prob_calibrated`(확률 전용)**로 분리
+> ②점수는 **out-of-fold**로 산출(학습에 쓴 고객을 다시 맞히는 낙관 제거) ③보정기가 두 번째 적합
+> 객체이므로 정체성은 **{model, calibrator} 번들**을 해싱한다.
+> 근거: 에픽1 회고 A2 · 스토리 3-1 외부 리뷰 M3 · `deferred-work.md` 「A2 결정」(실측표 포함).
+> 이름을 유지하지 않은 이유: 확률이 아닌 값에 `prob`을 남기면 문서가 아무리 경고해도 컬럼명이
+> 반대로 말한다.
+
+- **Binds:** CAP-2, CAP-3, CAP-5, CAP-6
+- **Prevents:** 마트의 이탈점수와 SHAP 해석이 서로 다른 학습 실행에서 나와, "이 고객이 위험한 이유"가 실제 점수와 어긋나는 것. `models/`는 gitignore라 사후 탐지가 불가능하다. 그리고 **순위용 점수와 확률이 한 컬럼에 섞여, 보정 방식을 바꾸는 순간 2×2 판정이 조용히 움직이는 것**
 - **Rule:**
-  - `churn_prob`·SHAP 값·요인 top5는 **동일 학습 아티팩트**에서 산출한다. SHAP은 `03_train_churn`에서만 계산하고 후속 단계는 **읽기만** 한다(재계산 금지 — 재학습 금지만으로는 부족).
-  - 아티팩트 저장 시 `models/churn_model.meta.json`을 함께 쓴다: `artifact_id`(콘텐츠 해시), `trained_at`, `RANDOM_SEED`, 입력 파일 해시, feature 목록, 라이브러리 버전.
+  - `churn_score`·`churn_prob_calibrated`·SHAP 값·요인 top5는 **동일 학습 아티팩트**에서 산출한다. SHAP은 `03_train_churn`에서만 계산하고 후속 단계는 **읽기만** 한다(재계산 금지 — 재학습 금지만으로는 부족).
+  - **컬럼 분리**: `quadrant_official`은 `churn_score`를, 기대절감액은 `churn_prob_calibrated`를 소비한다. 교차 사용 금지.
+  - **`churn_score`는 out-of-fold**다 — 각 고객을 그 고객을 학습에 쓰지 않은 폴드 모델이 채점한다. 전체 데이터 재예측값은 어떤 산출물에도 남기지 않는다.
+  - **보정은 엄격 단조 방식**을 쓴다(현재 Platt). 단조 비감소 방식(isotonic 등)은 평평 구간이 분위수 컷을 가로질러 판정을 바꾸므로, 채택하려면 CAP-5 판정 경로를 함께 재검토해야 한다.
+  - 아티팩트는 **{model, calibrator} 번들**로 저장하고 `models/churn_model.meta.json`을 함께 쓴다: `artifact_id`(번들 콘텐츠 해시), `trained_at`, `RANDOM_SEED`, 입력 파일 해시, feature 목록, 라이브러리 버전. 보정기만 바뀌어도 `artifact_id`가 달라진다.
   - `churn_scored.parquet`과 마트는 `artifact_id`를 보유한다. `05_marts`는 입력의 `artifact_id` 불일치 시 **즉시 실패**한다(경고 아님).
+  - **점수와 설명의 기준 모델이 다르다(알고 감수한 비용)**: `churn_score`는 폴드 모델들이 만들고, SHAP은 전체 데이터로 학습한 최종 모델을 설명한다. 폴드별 explainer 5개를 합산하는 편이 더 나쁘고(무엇을 설명하는지 말할 수 없다), 이 프로젝트는 서빙 경로가 non-goal이라 최종 모델의 유일한 역할이 설명이다. 산출물 문구가 이 구분을 명시한다.
 
 ### AD-6 — 라벨 성격 고정: 단면 분류 [ADOPTED]
 

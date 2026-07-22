@@ -45,7 +45,7 @@ def _series(values: list[float], name: str, index: list[int] | None = None) -> p
 
 
 def _paired(risk: list[float], value: list[float]) -> tuple[pd.Series, pd.Series]:
-    return _series(risk, "churn_prob"), _series(value, "value")
+    return _series(risk, "churn_score"), _series(value, "value")
 
 
 # A spread wide enough that the 0.75 / 0.50 quantiles fall BETWEEN distinct
@@ -210,7 +210,7 @@ def test_the_cut_separates_neighbouring_customers() -> None:
 def test_a_strictly_increasing_transform_of_risk_changes_nothing() -> None:
     """Recalibrating the probabilities must not move a single customer.
 
-    If this ever fails, the rule started reading the MAGNITUDE of churn_prob
+    If this ever fails, the rule started reading the MAGNITUDE of churn_score
     and the unresolved calibration debt (retro A2) has entered story 3-1.
     """
     risk, value = _paired(_RISK, _VALUE)
@@ -322,7 +322,7 @@ def test_rule_defaults_to_the_config_constant() -> None:
 
 
 def test_empty_input_raises_rather_than_returning_an_empty_frame() -> None:
-    empty_risk = _series([], "churn_prob")
+    empty_risk = _series([], "churn_score")
     empty_value = _series([], "value")
 
     with pytest.raises(ValueError, match="empty"):
@@ -333,7 +333,7 @@ def test_nan_in_risk_raises_and_names_the_axis() -> None:
     risk, value = _paired(_RISK, _VALUE)
     risk.iloc[2] = float("nan")
 
-    with pytest.raises(ValueError, match="churn_prob"):
+    with pytest.raises(ValueError, match="churn_score"):
         assign_quadrant(risk, value)
 
 
@@ -347,7 +347,7 @@ def test_nan_in_value_raises_and_names_the_axis() -> None:
 
 def test_misaligned_indexes_raise_rather_than_aligning_silently() -> None:
     """pandas would align on the index and fill the gaps with NaN."""
-    risk = _series(_RISK, "churn_prob", index=list(range(8)))
+    risk = _series(_RISK, "churn_score", index=list(range(8)))
     value = _series(_VALUE, "value", index=list(range(100, 108)))
 
     with pytest.raises(ValueError, match="index"):
@@ -355,7 +355,7 @@ def test_misaligned_indexes_raise_rather_than_aligning_silently() -> None:
 
 
 def test_length_mismatch_raises() -> None:
-    risk = _series(_RISK, "churn_prob")
+    risk = _series(_RISK, "churn_score")
     value = _series(_VALUE[:-1], "value")
 
     with pytest.raises(ValueError):
@@ -452,7 +452,7 @@ def test_a_plateau_producing_calibration_DOES_change_assignments() -> None:
     risk, value = _paired(_EDGE_RISK, _EDGE_VALUE)
     baseline = assign_quadrant(risk, value).labels
 
-    flattened = _series([0.0, 0.0, 0.0, 0.0, 1.0], "churn_prob")
+    flattened = _series([0.0, 0.0, 0.0, 0.0, 1.0], "churn_score")
     result = assign_quadrant(flattened, value).labels
 
     assert not result.equals(baseline)
@@ -489,7 +489,7 @@ def test_infinity_on_the_value_axis_is_refused() -> None:
 
 @pytest.mark.parametrize("rogue", [-0.4, 1.7])
 def test_a_risk_score_outside_zero_one_is_refused(rogue: float) -> None:
-    """M12. `churn_prob` is a probability by contract - a score on some other
+    """M12. `churn_score` is a probability by contract - a score on some other
     scale would still produce perfectly plausible quadrants."""
     risk, value = _paired([0.1, 0.2, rogue], [1.0, 2.0, 3.0])
 
@@ -512,7 +512,7 @@ def test_a_duplicated_customer_index_is_refused() -> None:
     """M13. Both axes sharing the same duplication passes the index-equality
     check, so a fan-out join would hand one customer two official quadrants
     and inflate the population the cuts are computed from."""
-    risk = _series([0.1, 0.9, 0.2, 0.3], "churn_prob", index=[101, 101, 102, 103])
+    risk = _series([0.1, 0.9, 0.2, 0.3], "churn_score", index=[101, 101, 102, 103])
     value = _series([100.0, 200.0, 300.0, 400.0], "value", index=[101, 101, 102, 103])
 
     with pytest.raises(ValueError, match="duplicate"):
@@ -537,7 +537,7 @@ def test_strict_monotone_invariance_survives_ties(label: str, scores: list[float
     because the claim is stated generally and duplicated scores are the obvious
     place a general claim goes wrong (raised while preparing the re-review).
     """
-    risk = _series(scores, "churn_prob")
+    risk = _series(scores, "churn_score")
     value = _series(_VALUE, "value")
 
     baseline = assign_quadrant(risk, value).labels
