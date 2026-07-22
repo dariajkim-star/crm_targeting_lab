@@ -1,11 +1,11 @@
 ---
-baseline_commit: 3b32749
-baseline_passed: 332
+baseline_commit: 504e5e6
+baseline_passed: 338
 ---
 
 # Story 3.2: 캠페인 기대 절감액 시뮬레이터
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -45,25 +45,25 @@ So that 캠페인의 가치를 금액 개념으로 비교할 수 있다.
 
 ## Tasks / Subtasks
 
-- [ ] **T1** `crm/campaign/simulate.py::expected_saving()` 구현 (AC1·AC3·AC5)
-  - [ ] 순수 함수. 기본값은 `crm.config` 상수 참조, 리터럴 재선언 금지
-  - [ ] 파라미터는 **함수 인자**로 받는다(3-4가 이 함수를 반복 호출한다)
-  - [ ] `crm.campaign.sensitivity` import 금지(AD-9 방향), **예산·우선순위 개념 없음**(3-3 소관)
-  - [ ] 확률 입력이 `churn_prob_calibrated`임을 시그니처·docstring이 못박는다
-- [ ] **T2** 테스트 — 행동 기반 (AC2)
-  - [ ] **단조성**: 성공률↑ → 절감액↑ / 비용↑ → 절감액↓ / 확률↑ → 절감액↑ / 가치↑ → 절감액↑
-  - [ ] **부호 전환 지점**: `p × value = cost / rate`에서 0을 지난다(아래 실측 16.67)
-  - [ ] **하드코딩 oracle** 1건
-  - [ ] **변이**: 부호 반전·항 누락·비용을 더하기·확률과 가치 뒤바꿈 → 전부 KILL 확인
-  - [ ] **동어반복 금지** — 같은 식을 다시 써서 비교하지 말 것
-- [ ] **T3** 계약 테스트 2종 (AC5·AC6)
-  - [ ] `churn_score`를 넣으면 금액이 달라짐을 실증(둘을 혼동할 수 없게)
-  - [ ] **sentinel monkeypatch**로 value 입력이 `customer_value()` 출력 그대로임을 검증
-- [ ] **T4** 실데이터 실행 + 리포트 (AC4)
-  - [ ] `docs/implementation-artifacts/savings-report-3-2.md`
-  - [ ] 분면별 절감액 분포, 부호 전환 경계, **가정 라벨링**(NFR1), 무단위 표기
-  - [ ] **아래 함정 1(총합 역전)을 리포트가 정면으로 다룰 것**
-- [ ] **T5** `deferred-work.md`·`sprint-status.yaml` 갱신
+- [x] **T1** `crm/campaign/simulate.py::expected_saving()` 구현 (AC1·AC3·AC5)
+  - [x] 순수 함수. 기본값은 `crm.config` 상수 참조, 리터럴 재선언 금지
+  - [x] 파라미터는 **함수 인자**로 받는다(3-4가 이 함수를 반복 호출한다)
+  - [x] `crm.campaign.sensitivity` import 금지(AD-9 방향), **예산·우선순위 개념 없음**(3-3 소관)
+  - [x] 확률 입력이 `churn_prob_calibrated`임을 시그니처·docstring이 못박는다
+- [x] **T2** 테스트 — 행동 기반 (AC2)
+  - [x] **단조성**: 성공률↑ → 절감액↑ / 비용↑ → 절감액↓ / 확률↑ → 절감액↑ / 가치↑ → 절감액↑
+  - [x] **부호 전환 지점**: `p × value = cost / rate`에서 0을 지난다(아래 실측 16.67)
+  - [x] **하드코딩 oracle** 1건
+  - [x] **변이**: 부호 반전·항 누락·비용을 더하기·확률과 가치 뒤바꿈 → 전부 KILL 확인
+  - [x] **동어반복 금지** — 같은 식을 다시 써서 비교하지 말 것
+- [x] **T3** 계약 테스트 2종 (AC5·AC6)
+  - [x] `churn_score`를 넣으면 금액이 달라짐을 실증(둘을 혼동할 수 없게)
+  - [x] **sentinel monkeypatch**로 value 입력이 `customer_value()` 출력 그대로임을 검증
+- [x] **T4** 실데이터 실행 + 리포트 (AC4)
+  - [x] `docs/implementation-artifacts/savings-report-3-2.md`
+  - [x] 분면별 절감액 분포, 부호 전환 경계, **가정 라벨링**(NFR1), 무단위 표기
+  - [x] **아래 함정 1(총합 역전)을 리포트가 정면으로 다룰 것**
+- [x] **T5** `deferred-work.md`·`sprint-status.yaml` 갱신
 
 ## Dev Notes
 
@@ -168,9 +168,20 @@ churn_score(미보정)를 쓸 경우: 합계 1,730,042 (+19.0% 과대)
 
 분면별은 함정 1의 표 참조.
 
+> **기준선 갱신 (2026-07-22, 3-0 코드리뷰 종결 후)**: `3b32749 / 332` → **`504e5e6 / 338`**.
+> 위 실측 수치 자체는 **모두 유효하다** — 리뷰가 바꾼 것은 가드와 문서뿐이고 `churn_prob_calibrated`
+> 값은 이동하지 않았다(`spearman(churn_score, churn_prob_calibrated) = 1.000000`, 평균 0.1607 불변).
+> 3-2에 영향 있는 변경 두 가지:
+> - `fit_calibrator`가 계수 부호·인덱스 정렬·라벨 유한성에 **fail-fast**한다. 보정 확률을 다시 만들
+>   일은 없지만, 이 함수를 호출하는 코드를 쓴다면 계약이 좁아졌다는 것을 알 것.
+> - AD-5가 2차 개정됐다 — 보증 범위가 "동일 학습 **실행(run)**"이고 `churn_score`는 "그 아티팩트의
+>   **OOF 형제**"다. 산식 docstring이 AD-5를 인용한다면 이 문구를 쓸 것.
+> `C=1e10`(Platt 무정규화)은 **deferred이며 3-2가 기준선을 고정한 뒤에는 더 비싸진다** — 이 스토리가
+> 기대절감액 수치를 리포트에 실으면 그 수치가 `C=1.0` 위에 서게 된다(`deferred-work.md` 3-0 절).
+
 ### Testing Standards
 
-- `.venv/Scripts/python.exe -m pytest` — 현 기준선 **332 passed**, 회귀 0
+- `.venv/Scripts/python.exe -m pytest` — 현 기준선 **338 passed**, 회귀 0
 - 성질 + 하드코딩 oracle + 변이 테스트, 실데이터 실행 DoD(conventions 3항)
 - **문서가 테스트를 앞서지도 뒤처지지도 않기** — 리포트 수치가 바뀌면 갱신 대상 문서를 함께 확인
   (회고 A3, 3-0이 첫 적용 사례)
@@ -190,7 +201,7 @@ docs/implementation-artifacts/deferred-work.md             # UPDATE
 ### 환경 실측 (2026-07-22)
 
 ```
-HEAD 3b32749 | 332 passed | artifact_id 9e1a4d71800f (8피처, OOF + Platt)
+HEAD 504e5e6 | 338 passed | artifact_id 9e1a4d71800f (8피처, OOF + Platt)
 churn_score mean 0.1946 / churn_prob_calibrated mean 0.1607 (= 실제 이탈률)
 customer_value median 3899.0 | 분면 443/2089/4624/2971
 ```
@@ -215,14 +226,82 @@ customer_value median 3899.0 | 분면 443/2089/4624/2971
 
 ### Agent Model Used
 
+claude-opus-4-8 (bmad-dev-story)
+
 ### Debug Log References
+
+**기준선**: HEAD `504e5e6`, 338 passed.
+
+**RED**: `tests/campaign/test_simulate.py` 선작성 → `ModuleNotFoundError: crm.campaign.simulate`.
+
+**변이 테스트를 실제로 돌렸다** — 스토리가 요구한 것은 "변이 테스트 작성"이 아니라 "전부 KILL 확인"
+이므로, 산식 한 줄을 실제로 바꿔가며 5종을 검증했다:
+
+```
+M1 부호 전체 반전    -> KILLED (9건 실패)
+M2 rate 항 누락      -> KILLED (5건)
+M3 비용을 더하기     -> KILLED (5건)
+M4 rate를 곱셈->덧셈 -> KILLED (5건)
+M5 cost 항 누락      -> KILLED (5건)
+```
+
+첫 시도에서 하니스가 상대경로로 인터프리터를 못 찾아 중단됐고, **M1 변이가 소스에 남은 채로
+멈췄다.** 절대경로로 고쳐 재실행하고 원본 복원을 확인했다(200행). 변이 테스트는 소스를 건드리므로
+`finally` 복원이 필수라는 것을 실물로 배웠다.
+
+**확률/가치 뒤바꿈 변이**는 산술로는 잡히지 않는다(곱셈은 교환법칙이 성립한다). 잡는 것은 **범위
+계약**이다 — 확률은 `[0, 1]`이고 가치는 아니므로 검증에서 걸린다. 테스트 docstring에 이 추론을
+남겼다.
+
+**구조 가드**: `AD-9 campaign order` 실스캔 **1 → 2**(스토리 예고와 일치). 이 커버리지 문서는
+`tests/structure/test_repo_structure.py`가 재생성한다 — 수동 편집 대상이 아니다.
 
 ### Completion Notes List
 
+- **AC1 충족**: `expected_saving()`이 `P(이탈) × 고객가치 × 성공률 − 비용`을 구현한다. 기본값은
+  `crm.config`의 `RETENTION_SUCCESS_RATE`·`COST_PER_CONTACT`를 **참조**하며 리터럴 재선언이 없다.
+  `test_the_defaults_come_from_config`가 명시 인자 호출과 기본 호출의 동일성으로 이를 고정한다.
+- **AC2 충족**: 동어반복 없음 — 산식을 테스트 안에서 다시 쓰지 않았다. 단조성 4종(성공률·비용·확률·
+  가치), 부호 전환 **교차**(경계 위/아래 각 1명), 손계산 oracle 1건(p=0.40 · value=1000 · rate=0.25 ·
+  cost=30 → **70.0**), 변이 5종 KILL.
+- **AC3 충족**: 성공률·비용은 **키워드 인자**다. 3-4가 그리드 점을 넘겨 반복 호출한다.
+  `_validate_assumptions`가 호출부 값도 검증한다 — config의 import 시점 가드는 기본값만 보고
+  스윕이 만든 값은 못 본다.
+- **AC4 충족**: 통화 기호·환산 없음. 리포트가 무단위임을 규약으로 명시(NFR3).
+- **AC5 충족(3-0 계약)**: 인자 이름이 `churn_prob_calibrated`이고 docstring이 두 컬럼을 모두
+  명명한다. `test_the_docstring_names_the_calibrated_column`이 그 문구의 존재를 테스트로 고정 —
+  이름만 바꾸고 설명이 썩는 것을 막는다. 실측 재확인: `churn_score` 오선택 시 합계
+  `1,454,088 → 1,730,042` (**+19.0%**, 스토리 예고와 정확히 일치).
+- **AC6 충족(1-2 인계)**: sentinel Series로 가치가 **그대로 통과**함을 검증
+  (`rate=1.0`·`cost=0.0`·`p=1.0`이면 출력이 sentinel과 동일해야 한다). 반대 방향 테스트도 함께 두어
+  재가중이 무해하지 않음을 고정했다.
+
+**실측이 스토리 사전조사와 전건 일치**: 양수 8,587/10,127(84.8%) · 합계 1,454,088 · 중앙값 2.83 ·
+최대 2,932.3 · 최소 −3.25 · 경계 16.6667 · 분면 443/2089/4624/2971 · 1인당 Save우선/관망 3.70배.
+
+**리포트가 사전조사를 넘어선 발견 1건**: 부호 전환이 **분면 하나 안에서만** 일어난다 — Save 우선·
+관망·저비용 유지는 **100% 양수**이고 음수는 전부 이탈 수용 분면(양수 48.2%) 안에 있다. 즉 "84.8%
+양수"는 경계선이 사분면을 가로지른 결과가 아니라 **가장 낮은 칸 내부에 놓여 있는** 결과다. 함정 4가
+경고한 "발견처럼 쓰지 말 것"을 리포트가 이 구조로 설명한다.
+
+**범위를 지켰다**: `target_priority` 없음, 예산 개념 없음, ROI 등고선 없음, 파이프라인 단계 없음,
+자체 분면 컷 없음. `assign_quadrant`은 리포트 집계에서만 **소비**했다.
+
+**테스트**: 338 → **364 passed** (+26), 회귀 0.
+
 ### File List
+
+- `crm/campaign/simulate.py` — NEW (`expected_saving`, `SAVING_COLUMN`)
+- `tests/campaign/test_simulate.py` — NEW (26건)
+- `docs/implementation-artifacts/savings-report-3-2.md` — NEW
+- `docs/implementation-artifacts/structure-guard-coverage.md` — UPDATE (테스트가 재생성, campaign order 1 → 2)
+- `docs/implementation-artifacts/deferred-work.md` — UPDATE (3-2 절 신설 3건)
+- `docs/implementation-artifacts/sprint-status.yaml` — UPDATE
+- `docs/implementation-artifacts/3-2-campaign-savings-simulator.md` — UPDATE (이 파일)
 
 ## Change Log
 
 | 날짜 | 변경 |
 |---|---|
+| 2026-07-22 | 스토리 3-2 구현: `expected_saving()` 순수 함수(FR12). 변이 5종을 실제로 심어 전부 KILL 확인. 실측이 사전조사와 전건 일치(84.8%·합계 1,454,088·경계 16.6667·1인당 3.70배·오선택 +19.0%). 리포트가 함정 1(총합 역전)·함정 4(84.8%는 비용 가정의 산물)를 정면으로 다루고, 부호 전환이 이탈 수용 분면 내부에서만 일어난다는 발견을 추가. AC5·AC6 계약 테스트로 고정. 338 → 364 passed. Status → review |
 | 2026-07-22 | 스토리 3-2 create-story(수동 — BMAD config가 DX_project를 가리켜 스킬 미사용). 함정 5건 실측과 함께 사전 기록: 총합이 2x2 서사를 뒤집어 보이는 것(관망 799,683 > Save 우선 626,845)·확률 컬럼 오선택 시 +19.0%·AD-11 재가중 계약 테스트(1-2 인계)·"84.8% 양수"는 비용 가정의 산물·액션 후보 출처 제한(A6). Status → ready-for-dev. 기준선 3b32749 / 332 passed |
