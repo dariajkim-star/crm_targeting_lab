@@ -6,20 +6,29 @@ Re-writing `p * value * rate - cost` in the test and comparing would prove only
 that the same expression was typed twice. Each test below names a PROPERTY the
 decision frame depends on:
 
-  - MONOTONE in all four inputs. This is what makes the number usable as a
-    ranking signal by story 3-3: if a higher churn probability could lower the
-    expected saving, "target the top N" would be meaningless.
+  - MONOTONE in all four inputs, FOR NON-NEGATIVE VALUE. That is what makes
+    the number usable as a ranking signal by story 3-3. The qualifier is not
+    decoration: at a negative customer value the probability monotonicity
+    reverses, and `test_the_probability_monotonicity_reverses_on_negative_value`
+    pins that rather than pretending it away (story 3-2 code review).
   - THE SIGN FLIP is where the campaign stops paying for itself, at
     `p * value = cost / rate`. Story 3-4 sweeps the assumptions AROUND this
     boundary, so its location is a contract, not an implementation detail.
   - ONE HARD-CODED ORACLE, computed by hand, so the whole suite cannot drift
     together if the formula is edited.
-  - MUTANTS: sign flips, dropped terms, cost added instead of subtracted, and
-    probability swapped with value must all be KILLED. The last one matters
-    because both are numeric Series and the swap raises no error.
+  - MUTANTS: sign flips, dropped terms and cost added instead of subtracted
+    must all be KILLED. Swapping probability with value is NOT in that list -
+    multiplication commutes, so there is no arithmetic mutant to kill; what
+    catches a caller who swaps them is the range and name validation, which is
+    a different kind of test and named as such below.
   - COLUMN CONTRACT (AC5): the probability input must be the CALIBRATED column.
     Measured on the real artifact, feeding the raw score inflates the total by
-    +19.0% and nothing in the type system notices.
+    +19.0%. Neither the arithmetic nor the range check can separate the two
+    columns, so the contract is enforced on the Series NAME. The earlier
+    version of this file claimed the contract was covered by a docstring
+    substring assertion and by a test that was really the probability
+    monotonicity restated - neither could fail on a wrong column (story 3-2
+    code review).
   - VALUE PASS-THROUGH (AC6): AD-11 says `customer_value()` alone defines value.
     The existing guard cannot see `customer_value(df) * 0.02`, so this pins it
     from the consumer side with a sentinel.
@@ -170,14 +179,14 @@ def test_the_retention_rate_is_a_factor_not_a_term():
     assert at_20 == pytest.approx(2 * at_10)
 
 
-def test_probability_and_value_are_not_interchangeable():
-    """Kills the swapped-arguments mutant.
+def test_swapping_the_two_axes_is_caught_by_validation_not_arithmetic():
+    """NOT a mutation kill - `p * value` commutes, so there is nothing to kill.
 
-    Both inputs are numeric Series, so passing them the wrong way round raises
-    nothing. The formula multiplies them, so a symmetric case would be blind to
-    it - `p * value` is commutative. What is NOT symmetric is the range
-    contract: probability lives in [0, 1] and value does not, so the swap is
-    caught by validation rather than by arithmetic.
+    What this pins is the weaker true statement: a caller who passes the two
+    arguments the wrong way round is refused. And it is refused only because
+    the value axis here happens to exceed 1 - a population whose values all sat
+    inside [0, 1] would swap silently. That limit is the reason the name check
+    exists, and the reason this test is not filed under AC5.
     """
     prob, value = pair_for_swap()
 
@@ -193,37 +202,43 @@ def pair_for_swap() -> tuple[pd.Series, pd.Series]:
 # --- AC5: the column contract ------------------------------------------------
 
 
-def test_the_calibrated_column_and_the_raw_score_give_different_money(pair):
-    """AC5. The two columns are interchangeable to the type system and NOT to
-    the arithmetic.
+def test_a_series_named_churn_score_is_refused(pair):
+    """AC5. The contract, enforced rather than documented.
 
-    Measured on the real artifact: feeding `churn_score` (raw out-of-fold,
-    mean 0.1946) instead of `churn_prob_calibrated` (Platt, mean 0.1607 = the
-    observed attrition rate) inflates the total by +19.0%. This test does not
-    reproduce that figure - it pins the weaker, always-true statement that the
-    function is sensitive to which column it was handed, so a future refactor
-    cannot quietly make them equivalent.
+    This is the mistake as it actually arrives: a column read straight out of
+    `churn_scored.parquet`, which carries `name="churn_score"`. It is in [0, 1]
+    like the calibrated column, so every other check passes it - measured on
+    the real artifact it produced a total of 1,730,042 against the correct
+    1,454,088, a 19.0% inflation with nothing raised.
     """
     _, value = pair
-    index = value.index
-    calibrated = pd.Series([0.05, 0.18, 0.45, 0.85], index=index)
-    raw_score = pd.Series([0.07, 0.22, 0.52, 0.93], index=index)  # uncalibrated: higher
+    raw_score = pd.Series([0.07, 0.22, 0.52, 0.93], index=value.index, name="churn_score")
 
-    assert expected_saving(raw_score, value).sum() > expected_saving(calibrated, value).sum()
+    with pytest.raises(ValueError, match="churn_score"):
+        expected_saving(raw_score, value)
 
 
-def test_the_docstring_names_the_calibrated_column():
-    """AC5, from the other side: the contract must be readable at the call site.
+def test_the_correctly_named_column_is_accepted(pair):
+    """The counterpart: the guard must not reject the column it asks for."""
+    _, value = pair
+    calibrated = pd.Series(
+        [0.05, 0.18, 0.45, 0.85], index=value.index, name="churn_prob_calibrated"
+    )
 
-    A reviewer choosing between two [0, 1] columns has nothing but the
-    signature and the docstring to go on, so the column name is required to
-    appear there. Story 3-0 renamed these deliberately; this keeps the rename
-    from decaying into a comment nobody updated.
+    assert expected_saving(calibrated, value).notna().all()
+
+
+def test_an_unnamed_probability_series_is_accepted(pair):
+    """The guard is deliberately PARTIAL, and this pins how far it goes.
+
+    Any Series that has been through arithmetic carries `name=None`, so
+    refusing unnamed input would reject legitimate callers - story 3-4 sweeping
+    assumptions, for one. The cost is stated rather than hidden: a raw score
+    that has been through any operation is no longer distinguishable here.
     """
-    doc = expected_saving.__doc__ or ""
+    prob, value = pair
 
-    assert "churn_prob_calibrated" in doc
-    assert "churn_score" in doc
+    assert expected_saving(prob.rename(None), value).notna().all()
 
 
 # --- AC6: value pass-through (the 1-2 handover) ------------------------------
@@ -369,3 +384,131 @@ def test_the_defaults_come_from_config(pair):
     )
 
     pd.testing.assert_series_equal(expected_saving(prob, value), explicit)
+
+
+# --- The limit of the monotonicity claim (story 3-2 code review) -------------
+
+
+def test_the_probability_monotonicity_reverses_on_negative_value():
+    """The claim above holds for non-negative value ONLY - pinned, not hidden.
+
+    `customer_value()` returns `Total_Trans_Amt` on its raw scale and promises
+    nothing about sign, and neither this module nor `matrix.py` adds a range
+    check (AD-11: the value definition is not theirs to extend). So a negative
+    value is reachable by contract, and there the arithmetic inverts: a riskier
+    customer produces a SMALLER expected saving. Story 3-3 ranks on this output
+    and would silently rank backwards.
+
+    The current artifact carries no negative values. This test exists so that
+    the day one appears, the behaviour is a documented consequence rather than
+    a discovery.
+    """
+    value = pd.Series([-1000.0, -1000.0], index=[1, 2])
+    prob = pd.Series([0.1, 0.9], index=[1, 2])
+
+    result = expected_saving(prob, value)
+
+    assert result.iloc[0] == pytest.approx(-35.0)
+    assert result.iloc[1] == pytest.approx(-275.0)
+    assert result.iloc[1] < result.iloc[0], "monotonicity is reversed here, by construction"
+
+
+# --- Assumption-parameter guards (story 3-2 code review) ---------------------
+
+
+@pytest.mark.parametrize("rogue", [float("nan"), float("inf"), float("-inf")])
+def test_a_non_finite_cost_is_refused(pair, rogue):
+    """A NaN cost used to pass: `nan < 0.0` is False.
+
+    Every saving then became NaN, and `Series.sum()` skips NaN - so a report
+    would print a confident total of 0.0 rather than failing. The data axes
+    have rejected non-finite input all along; the assumption parameters now
+    hold to the same standard.
+    """
+    prob, value = pair
+
+    with pytest.raises(ValueError, match="cost_per_contact must be finite"):
+        expected_saving(prob, value, cost_per_contact=rogue)
+
+
+def test_a_non_finite_retention_rate_is_refused(pair):
+    """Refused explicitly, not as a side effect of the range comparison."""
+    prob, value = pair
+
+    with pytest.raises(ValueError, match="retention_rate must be finite"):
+        expected_saving(prob, value, retention_rate=float("nan"))
+
+
+def test_a_zero_retention_rate_is_refused(pair):
+    """At rate 0 every customer collapses to exactly -cost.
+
+    The output becomes a constant column and story 3-3's "top N" would cut an
+    all-tied ranking by index order without anything failing. `matrix.py`
+    refuses the equivalent degenerate quantile with a strict inequality; this
+    matches that policy rather than leaving the two modules inconsistent.
+    """
+    prob, value = pair
+
+    with pytest.raises(ValueError, match=r"\(0, 1\]"):
+        expected_saving(prob, value, retention_rate=0.0)
+
+
+# --- Input shape and dtype guards (story 3-2 code review) -------------------
+
+
+def test_a_dataframe_is_refused(pair):
+    """One `df[["col"]]` typo away, and `value.py` warns that a duplicated
+    column label makes `df[col]` return a frame on its own. Without this the
+    failure is `"The truth value of a Series is ambiguous"`, which names
+    neither the argument nor the problem."""
+    prob, value = pair
+
+    with pytest.raises(ValueError, match="needs a Series"):
+        expected_saving(prob.to_frame(), value)
+
+
+def test_a_datetime_value_axis_is_refused(pair):
+    """Measured before the guard: a datetime column arrived as nanoseconds
+    (9.47e13 for 2020-01-01), finite and NaN-free, and passed every check as
+    plausible money. The value axis has no range check to catch it."""
+    prob, _ = pair
+    dates = pd.Series(pd.to_datetime(["2020-01-01", "2021-01-01", "2022-01-01", "2023-01-01"]),
+                      index=prob.index)
+
+    with pytest.raises(ValueError, match="numeric"):
+        expected_saving(prob, dates)
+
+
+def test_a_boolean_value_axis_is_refused(pair):
+    """`True` coerces to 1.0 and passes as a customer worth one unit."""
+    prob, _ = pair
+    flags = pd.Series([True, False, True, True], index=prob.index)
+
+    with pytest.raises(ValueError, match="numeric"):
+        expected_saving(prob, flags)
+
+
+def test_a_length_mismatch_is_named_as_such_even_when_a_value_is_missing(pair):
+    """Validation ORDER: the pairing is checked before either side's contents.
+
+    With a short probability axis that also contains NaN, checking contents
+    first reported "missing entries" and the fact that the two populations
+    differ in SIZE never reached the screen. Story 3-0 fixed exactly this in
+    `calibrate.py`; the new module repeated it.
+    """
+    _, value = pair
+    short = pd.Series([float("nan")], index=value.index[:1])
+
+    with pytest.raises(ValueError, match="one probability per customer value"):
+        expected_saving(short, value)
+
+
+def test_an_index_dtype_mismatch_is_refused(pair):
+    """`Index.equals` ignores dtype, so int64 and float64 labels compare equal
+    here and then fail to match when story 4-1 joins onto the mart."""
+    prob, value = pair
+    value = value.set_axis(pd.Index([float(i) for i in value.index]))
+    prob = prob.set_axis(pd.Index([int(i) for i in prob.index]))
+
+    with pytest.raises(ValueError, match="index dtype|share a dtype"):
+        expected_saving(prob, value)

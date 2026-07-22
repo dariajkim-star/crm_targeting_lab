@@ -17,21 +17,45 @@ them the same way (NFR1). The break-even point sits at
 
     P(churn) * customer_value = cost_per_contact / retention_rate
 
-which on the shipped defaults is 16.67 - and since the median customer value is
-3,899, a probability above 0.0043 clears it. That is why "most customers show a
-positive expected saving" is a statement about `cost = 5.0`, not a finding
-about the customer base. Story 3-4 (CAP-7) is what turns the assumption into a
-range; this module only makes the number the sweep moves.
+which on the shipped defaults is 16.67. A customer sitting exactly at the
+median value of 3,899 therefore clears it at a probability of 0.0043 - but that
+is a statement about ONE customer, not about the base: customers below the
+median need a proportionally higher probability, which is why 1,540 of them
+still come out negative. Any population-level share of positives (the report
+puts it at 84.8%) is a statement about `cost = 5.0`, not a finding about the
+customer base. Story 3-4 (CAP-7) is what turns the assumption into a range;
+this module only makes the number the sweep moves.
 
 Which probability column (story 3-0)
 ------------------------------------
 `churn_prob_calibrated`, never `churn_score`. Both are in `[0, 1]` and sit in
-the same frame, so nothing in the type system distinguishes them - but only the
-calibrated one is a probability. Measured on the real artifact, the raw
-out-of-fold score has mean 0.1946 against an observed attrition rate of 0.1607,
-and using it here inflates the total expected saving by +19.0%. The 2x2 uses the
-raw score on purpose (it needs only the ORDER); money needs the magnitude to
-mean what it says.
+the same frame, so the range check below cannot tell them apart. Measured on
+the real artifact, the raw out-of-fold score has mean 0.1946 against an
+observed attrition rate of 0.1607, and using it here inflates the total
+expected saving by +19.0%. The 2x2 uses the raw score on purpose (it needs only
+the ORDER); money needs the magnitude to mean what it says.
+
+Because nothing in the arithmetic can catch that swap, this module checks the
+Series NAME (story 3-2 code review). It is a partial guard and says so: a
+Series that has been through arithmetic carries `name=None` and is let through,
+because refusing it would break legitimate callers. It catches the case that
+actually happens - a column read straight out of `churn_scored.parquet`.
+
+Monotonicity, and the limit of that claim
+-----------------------------------------
+For NON-NEGATIVE customer value the output is increasing in every input: a
+riskier customer, a more valuable one, a better retention rate and a cheaper
+contact all raise it. Story 3-3 ranks on this.
+
+That claim does NOT extend to negative value. `customer_value()` returns
+`Total_Trans_Amt` on its raw scale and promises nothing about sign (AD-11 - the
+value definition is not this module's to extend), and at a negative value the
+probability monotonicity REVERSES: measured at value = -1000, p=0.1 gives -35.0
+and p=0.9 gives -275.0. No aggregate would look wrong while that happened. The
+current artifact carries no negative values, so this is a contract gap rather
+than a live defect, and story 3-2 chose to state the limit rather than add a
+range check this module does not own. A consumer that ranks on this output owes
+itself a non-negativity check on the value axis first.
 
 What this module deliberately does not know
 -------------------------------------------
@@ -54,8 +78,11 @@ global state. Encoding: runtime strings stay ASCII.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
+from pandas.api.types import is_bool_dtype, is_numeric_dtype
 
 from crm.config import COST_PER_CONTACT, RETENTION_SUCCESS_RATE
 
@@ -64,11 +91,16 @@ __all__ = ["SAVING_COLUMN", "expected_saving"]
 SAVING_COLUMN = "expected_saving"
 
 _PROB_AXIS = "churn_prob_calibrated"
-_VALUE_AXIS = "customer value"
+_VALUE_AXIS = "customer_value"
 
 
-def _validate_axis(series: pd.Series, axis_name: str) -> np.ndarray:
+def _validate_axis(series: pd.Series, axis_name: str, *, unit_interval: bool) -> np.ndarray:
     """Reject inputs the arithmetic would silently accept.
+
+    `unit_interval` is an explicit flag rather than a comparison against the
+    axis name (story 3-2 code review): keying the probability range check off a
+    string label made the one guard that catches a swapped argument depend on a
+    constant that a rename or a typo could quietly switch off.
 
     Unlike the quantile cuts in `matrix.py`, multiplication does not skip NaN -
     it propagates. That is better, but only if the failure is named here rather
@@ -81,38 +113,101 @@ def _validate_axis(series: pd.Series, axis_name: str) -> np.ndarray:
             f"expected_saving received an empty {axis_name} axis. An empty "
             f"population would sum to a confident zero."
         )
+    if is_bool_dtype(series) or not is_numeric_dtype(series):
+        raise ValueError(
+            f"expected_saving needs a numeric {axis_name} axis, got dtype "
+            f"'{series.dtype}'. Anything pandas can coerce to float passes "
+            f"every check below: a datetime column arrives as nanoseconds "
+            f"(measured: 9.47e13 for 2020-01-01) and a boolean arrives as 0/1, "
+            f"both finite, both plausible-looking money."
+        )
     if series.isna().any():
         count = int(series.isna().sum())
         raise ValueError(
-            f"expected_saving received {count} missing {axis_name} value(s). "
-            f"The product would be NaN for those customers and any total would "
-            f"quietly drop them - fix the upstream join rather than imputing."
+            f"expected_saving received {count} missing entries on the "
+            f"{axis_name} axis. The product would be NaN for those customers "
+            f"and any total would quietly drop them - fix the upstream join "
+            f"rather than imputing."
         )
     values = series.to_numpy(dtype=float)
     if not np.isfinite(values).all():
         raise ValueError(
-            f"expected_saving received non-finite {axis_name} value(s). One "
-            f"infinity survives every step below and would dominate the total."
+            f"expected_saving received non-finite entries on the {axis_name} "
+            f"axis. One infinity survives every step below and would dominate "
+            f"the total."
         )
-    if axis_name == _PROB_AXIS and ((values < 0.0) | (values > 1.0)).any():
+    if unit_interval and ((values < 0.0) | (values > 1.0)).any():
         out_of_range = int(((values < 0.0) | (values > 1.0)).sum())
         raise ValueError(
-            f"expected_saving received {out_of_range} probability value(s) "
-            f"outside [0, 1]. This argument is `churn_prob_calibrated`; a raw "
-            f"score on another scale - or the value axis passed by mistake - "
-            f"would still produce plausible-looking money."
+            f"expected_saving received {out_of_range} {axis_name} entries "
+            f"outside [0, 1]. This argument is a probability; a score on "
+            f"another scale - or the value axis passed by mistake - would "
+            f"still produce plausible-looking money."
         )
     # No range check on the value axis: `customer_value()` returns the raw
     # measured scale and promises nothing about sign (AD-11 - the value
-    # definition is not this module's to extend). Same reasoning as matrix.py.
+    # definition is not this module's to extend). The module docstring states
+    # what that costs; `matrix.py` declines the same check for the same reason.
     return values
 
 
+def _require_series(candidate: object, axis_name: str) -> None:
+    """Type-check both axes BEFORE anything reads their contents.
+
+    Everything downstream assumes a Series: `_validate_pair` reads `.index`,
+    the name guard reads `.name`, and `.isna().any()` on a DataFrame returns a
+    Series and dies with "The truth value of a Series is ambiguous" - a message
+    that names neither the argument nor the problem. A one-column DataFrame is
+    one `df[["col"]]` typo away, and `value.py` warns that a duplicated column
+    label makes `df[col]` return a frame on its own.
+    """
+    if not isinstance(candidate, pd.Series):
+        raise ValueError(
+            f"expected_saving needs a Series for {axis_name}, got "
+            f"{type(candidate).__name__}."
+        )
+
+
+def _validate_probability_column(series: pd.Series) -> None:
+    """Catch `churn_score` being passed where `churn_prob_calibrated` belongs.
+
+    Both columns are `[0, 1]` floats in the same frame, so no range check and no
+    arithmetic can separate them - measured, feeding the raw score inflates the
+    total by +19.0% with nothing raised (story 3-2 code review).
+
+    The name is the only signal available, so this checks it and accepts the
+    limits: `name=None` passes, because any Series that has been through
+    arithmetic loses its name and refusing those would reject legitimate
+    callers. What it does catch is the column read straight from
+    `churn_scored.parquet`, which is the way the mistake actually arrives.
+    """
+    if series.name is not None and series.name != _PROB_AXIS:
+        raise ValueError(
+            f"expected_saving got a probability Series named '{series.name}', "
+            f"expected '{_PROB_AXIS}'. Story 3-0 split the column in two: "
+            f"'churn_score' is the raw out-of-fold RANKING signal and using it "
+            f"here inflates the total by 19 percent (measured), because its "
+            f"mean is 0.1946 against an observed attrition rate of 0.1607. "
+            f"Pass the calibrated column, or pass an unnamed Series if this is "
+            f"a derived value."
+        )
+
+
 def _validate_pair(churn_prob_calibrated: pd.Series, value: pd.Series) -> None:
+    """Check the PAIRING before either side's contents.
+
+    Order matters (story 3-2 code review, same defect story 3-0 fixed in
+    `calibrate.py`): a collapsed upstream join produces a short or empty
+    probability axis, and validating contents first reports "missing entries"
+    while the fact that the two populations differ in SIZE never reaches the
+    screen.
+    """
     if len(churn_prob_calibrated) != len(value):
         raise ValueError(
             f"expected_saving needs one probability per customer value: got "
-            f"{len(churn_prob_calibrated)} and {len(value)}."
+            f"{len(churn_prob_calibrated)} and {len(value)}. A length mismatch "
+            f"means the two came from different populations, not that one of "
+            f"them is short."
         )
     if not churn_prob_calibrated.index.equals(value.index):
         raise ValueError(
@@ -120,6 +215,13 @@ def _validate_pair(churn_prob_calibrated: pd.Series, value: pd.Series) -> None:
             "would ALIGN mismatched labels and fill the gaps with NaN, so a "
             "join done wrong upstream would surface as plausible money for the "
             "wrong customers."
+        )
+    if churn_prob_calibrated.index.dtype != value.index.dtype:
+        raise ValueError(
+            f"expected_saving needs the two indexes to share a dtype, got "
+            f"{churn_prob_calibrated.index.dtype} and {value.index.dtype}. "
+            f"`Index.equals` ignores dtype, so these compare equal here and "
+            f"then fail to match when story 4-1 joins the result onto the mart."
         )
     if not churn_prob_calibrated.index.is_unique:
         duplicated = churn_prob_calibrated.index[churn_prob_calibrated.index.duplicated()]
@@ -136,12 +238,33 @@ def _validate_assumptions(retention_rate: float, cost_per_contact: float) -> Non
     Checked here and not only in `crm/config.py` because story 3-4 sweeps them
     at the call site: the import-time guard sees the config defaults and cannot
     see a grid point built by a caller.
+
+    Both are checked for finiteness EXPLICITLY. `nan < 0.0` is False, so a NaN
+    cost used to pass - and then every customer's saving is NaN while
+    `Series.sum()` skips NaN and reports a confident 0.0 (story 3-2 code
+    review). A NaN rate happened to be refused by the range test; relying on
+    that accident meant the two parameters failed in different ways.
     """
-    if not 0.0 <= retention_rate <= 1.0:
+    if not math.isfinite(retention_rate):
         raise ValueError(
-            f"retention_rate must lie in [0, 1], got {retention_rate}. Above 1 "
-            f"the campaign would save more customers than are at risk, and the "
-            f"expected saving would exceed the value it is derived from."
+            f"retention_rate must be finite, got {retention_rate}."
+        )
+    if not math.isfinite(cost_per_contact):
+        raise ValueError(
+            f"cost_per_contact must be finite, got {cost_per_contact}. A NaN "
+            f"cost makes every saving NaN, and a total over NaNs reads as a "
+            f"confident zero rather than an error."
+        )
+    # Strictly greater than zero, matching `matrix.py`'s treatment of a
+    # degenerate quantile: at rate 0 every customer collapses to exactly
+    # -cost_per_contact, the output becomes a constant, and story 3-3's "top N"
+    # would cut an all-tied column by index order without anything failing.
+    if not 0.0 < retention_rate <= 1.0:
+        raise ValueError(
+            f"retention_rate must lie in (0, 1], got {retention_rate}. At 0 "
+            f"every customer collapses to the same value and the ranking "
+            f"information disappears silently; above 1 the campaign would save "
+            f"more customers than are at risk."
         )
     if cost_per_contact < 0.0:
         raise ValueError(
@@ -165,14 +288,15 @@ def expected_saving(
             in ``[0, 1]``. This is the `churn_prob_calibrated` column, not
             `churn_score` - the latter is the raw out-of-fold ranking signal
             (story 3-0) and using it here inflates the total by +19.0%
-            (measured). Both columns are `[0, 1]` floats, so this argument name
-            and this sentence are the only things standing between them.
+            (measured). A Series carrying the wrong NAME is refused; an unnamed
+            one is accepted, so the guard is partial by design.
         value: Customer value per customer, the persisted ``customer_value``
             output on its raw scale (AD-11 - consumed, never recomputed or
-            re-weighted).
-        retention_rate: ASSUMED share of contacted at-risk customers who stay.
-            Defaults to the single config constant; story 3-4 passes grid
-            points instead of editing the constant.
+            re-weighted). Monotonicity in the probability holds only where this
+            is non-negative; see the module docstring.
+        retention_rate: ASSUMED share of contacted at-risk customers who stay,
+            in ``(0, 1]``. Defaults to the single config constant; story 3-4
+            passes grid points instead of editing the constant.
         cost_per_contact: ASSUMED cost of one contact, unitless (NFR3 - the
             data carries no currency, so attaching one would fabricate
             information). Charged whether or not the contact works.
@@ -183,15 +307,20 @@ def expected_saving(
         that is a real answer ("do not contact"), not a failure.
 
     Raises:
-        ValueError: on an empty axis, missing or non-finite values, a
-            probability outside ``[0, 1]``, mismatched lengths or indexes, a
-            duplicated customer index, a ``retention_rate`` outside ``[0, 1]``,
-            or a negative ``cost_per_contact``.
+        ValueError: on a non-Series or non-numeric input, an empty axis,
+            missing or non-finite entries, a probability outside ``[0, 1]`` or
+            carrying the wrong column name, mismatched lengths, indexes or
+            index dtypes, a duplicated customer index, a non-finite
+            ``retention_rate`` or ``cost_per_contact``, a ``retention_rate``
+            outside ``(0, 1]``, or a negative ``cost_per_contact``.
     """
     _validate_assumptions(retention_rate, cost_per_contact)
-    probabilities = _validate_axis(churn_prob_calibrated, _PROB_AXIS)
-    values = _validate_axis(value, _VALUE_AXIS)
+    _require_series(churn_prob_calibrated, _PROB_AXIS)
+    _require_series(value, _VALUE_AXIS)
     _validate_pair(churn_prob_calibrated, value)
+    _validate_probability_column(churn_prob_calibrated)
+    probabilities = _validate_axis(churn_prob_calibrated, _PROB_AXIS, unit_interval=True)
+    values = _validate_axis(value, _VALUE_AXIS, unit_interval=False)
 
     # Written as (value at risk) * rate - cost so the terms line up with the
     # sentence in the module docstring; grouping it any other way computes the
