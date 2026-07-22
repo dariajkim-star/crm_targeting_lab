@@ -220,6 +220,14 @@ COST_PER_CONTACT: float = 5.0
 # source: 정책가정 (sensitivity sweep range for story 3-4)
 COST_GRID: tuple[float, ...] = (1.0, 2.5, 5.0, 10.0, 20.0)
 
+# How many independent random campaigns the story 3-3 baseline averages. NOT an
+# assumption about the world - it is a numerical convention, chosen a priori so
+# that the random comparison is a mean rather than one draw. A single seeded
+# draw is reproducible (AD-7) but not representative: measured at 500 contacts,
+# changing only the seed moves the reported multiple between x7.76 and x14.09.
+# source: 규약 (arbitrary but fixed; callers may override per call)
+RANDOM_BASELINE_DRAWS: int = 200
+
 
 def ensure_output_dirs() -> None:
     """Create gitignored output directories if missing.

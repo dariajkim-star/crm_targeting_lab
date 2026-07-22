@@ -29,7 +29,7 @@ _LANE_B = ("crm.ltv",)
 _COMMON = "crm.common"
 
 # Campaign inner order (AD-9). A module may import earlier ones, never later.
-_CAMPAIGN_ORDER = ("matrix", "simulate", "sensitivity")
+_CAMPAIGN_ORDER = ("matrix", "simulate", "priority", "sensitivity")
 
 # Pipeline stage shape (AD-8/AD-9).
 _PIPELINE_MAX_LINES = 40
