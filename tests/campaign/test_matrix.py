@@ -517,3 +517,32 @@ def test_a_duplicated_customer_index_is_refused() -> None:
 
     with pytest.raises(ValueError, match="duplicate"):
         assign_quadrant(risk, value)
+
+
+@pytest.mark.parametrize(
+    ("label", "scores"),
+    [
+        ("ties away from the cut", [0.1, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]),
+        ("ties sitting ON the cut", [0.1, 0.2, 0.3, 0.4, 0.4, 0.4, 0.5, 0.6]),
+        ("heavy ties, two clusters", [0.2, 0.2, 0.2, 0.2, 0.8, 0.8, 0.8, 0.8]),
+        ("every score identical", [0.3] * 8),
+    ],
+)
+def test_strict_monotone_invariance_survives_ties(label: str, scores: list[float]) -> None:
+    """Ties do not break the strictly-increasing half of the AC6 claim.
+
+    The report says strictly increasing recalibration is safe. A strictly
+    increasing map is injective, so it preserves ties rather than creating or
+    merging them - which is exactly what separates it from isotonic. Pinned
+    because the claim is stated generally and duplicated scores are the obvious
+    place a general claim goes wrong (raised while preparing the re-review).
+    """
+    risk = _series(scores, "churn_prob")
+    value = _series(_VALUE, "value")
+
+    baseline = assign_quadrant(risk, value).labels
+    recalibrated = risk**3 / (risk**3 + (1 - risk) ** 3)
+
+    result = assign_quadrant(recalibrated, value).labels
+
+    pd.testing.assert_series_equal(result, baseline)
