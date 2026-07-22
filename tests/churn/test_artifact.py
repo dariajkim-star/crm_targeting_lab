@@ -23,6 +23,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.linear_model import LogisticRegression
 
 from crm.churn.artifact import (
     ArtifactIdentityError,
@@ -473,12 +474,21 @@ def test_swapping_only_the_calibrator_changes_the_artifact_id():
     be shipped under an identity record that still vouched for the old pairing -
     and every downstream number derived from ``churn_prob_calibrated`` would be
     attributed to a run that never produced it.
+
+    Swapping in `None` would only prove that a bundle with a HOLE hashes
+    differently. The realistic tampering is a calibrator that is present, valid,
+    and fitted on something else - so that is what this substitutes.
     """
     features, raw = _frames()
     result = fit_and_compare(features, raw)
 
+    other = LogisticRegression().fit(
+        np.linspace(0.0, 1.0, 40).reshape(-1, 1), np.array([0, 1] * 20)
+    )
+    assert float(other.coef_[0][0]) != float(result.calibrator.coef_[0][0])
+
     same = artifact_id(serialize_model(result.bundle()))
-    tampered = artifact_id(serialize_model({"model": result.model, "calibrator": None}))
+    tampered = artifact_id(serialize_model({"model": result.model, "calibrator": other}))
 
     assert same == artifact_id(serialize_model(result.bundle()))  # stable
     assert tampered != same

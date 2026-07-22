@@ -41,9 +41,10 @@
 - ~~**비교 지표의 machine-readable 저장 (리뷰 문서 정직성)**~~ — **해소(1-6b)**: `churn_model.meta.json`에 `metrics`
   블록(baseline/xgb PR-AUC·lift·positive_rate·cv_folds)을 기록. **`artifact_id` 계산에는 넣지 않는다** — 지표는
   정체성의 일부가 아니라 정체성에 딸린 기록이고, 넣으면 같은 모델이 지표만 바뀌어도 다른 id를 갖게 된다.
-- **churn_prob calibration (리뷰 Med-6)**: in-sample·미보정 점수임을 문서화했고 순위 신호로만 쓰도록
-  제한했다. 진짜 확률이 필요해지면(예: 기대절감액 계산이 확률 해석을 요구하면) OOF calibration을 별도
-  스토리로 — 3-2 시뮬레이터 설계 시 확률 vs 순위 요구를 확정할 것.
+- ~~**churn_prob calibration (리뷰 Med-6)**~~ — **해소(3-0)**: 예고한 "별도 스토리"가 스토리 3-0이었다.
+  OOF 점수(`churn_score`, 순위 전용) + Platt 보정(`churn_prob_calibrated`, 확률 전용)으로 컬럼을 분리했고,
+  `churn_prob`이라는 이름은 폐기했다. 여기서 미룬 "3-2 설계 시 확률 vs 순위 요구 확정"은 **투트랙으로
+  답했다** — 확정할 필요 없이 둘 다 산출한다.
 
 ## Deferred from: code review of 1-4-kmeans-segments-stable-ids (2026-07-21, 외부 GPT 리뷰)
 
@@ -85,9 +86,9 @@
   어떤 액션에 대응되는지 답을 가진 스토리가 맡을 것.
 - **`Avg_Open_To_Buy` 제외** — `Credit_Limit - Total_Revolving_Bal`의 완전 중복. 중복 피처는 SHAP에서
   기여가 임의로 갈려 요인 해석을 흐린다(아래 항목의 실측 사례 참조).
-- **`churn_prob` calibration(1-6a에서 이월, 여전히 미해소)** — **여전히 보정된 확률이 아니다.**
-  3-2 시뮬레이터가 확률 해석을 요구하면 OOF calibration을 별도 스토리로 다룰 것.
-  **에픽1 회고(2026-07-22)에서 실측함 — 아래 「calibration 실측」 절 참조.**
+- ~~**`churn_prob` calibration(1-6a에서 이월)**~~ — **해소(3-0)**: 에픽1 회고(2026-07-22)의 실측이
+  A2 결정으로, A2가 스토리 3-0으로 이어졌다. `churn_prob_calibrated`의 평균 0.1607이 실제 이탈률과
+  일치하며, 순위용 `churn_score`와 분리됐다. 실측 근거는 아래 「calibration 실측」·「A2 결정」 절.
 - **SHAP 인과 해석 금지의 문서 강제** — 현재는 리포트 문구로만 막고 있다. 마트(4-1)·대시보드(4-3)가
   요인을 노출할 때 같은 경고가 화면까지 전달되는지는 그 스토리들이 책임진다.
 
@@ -192,6 +193,13 @@ StratifiedKFold 홀드아웃으로 채점하고, 1-6a 리포트의 헤드라인 
 계약·`artifact_id`·1-6a/1-6b 리포트까지 건드리므로 명백히 별도 스토리 크기이고, 회고 A4(스토리가
 크면 리뷰 지적이 폭증)의 교훈에 역행한다.
 
+> **✅ 실행 완료 (2026-07-22, 커밋 `3b32749`)** — 계획대로 수행됐다. 분면 이동은 **예고치와 정확히
+> 일치**했고(443/2089/4624/2971, 위험 컷 0.126842 → 0.132753), 원인은 보정이 아니라 in-sample → OOF
+> 전환이었다(Platt은 0명 변경). PR-AUC 0.9508 불변. `artifact_id` `c751c63d5b58` → `9e1a4d71800f`.
+> 코드리뷰에서 드러난 것: **엄격 단조는 데이터의 성질이지 구현의 보장이 아니었다** — 계수가 음수면
+> 보정이 순위를 뒤집는데 평균은 실제 이탈률에 그대로 맞아 어떤 지표로도 안 잡힌다. `fit_calibrator`가
+> 이제 fail-fast한다. 노출 대상은 3-1이 아니라 **3-2**였다(투트랙에서 2×2는 raw `churn_score`를 읽는다).
+
 ### calibration 실측 (에픽1 회고, 2026-07-22 — A2 결정 근거)
 
 산출물 `data/churn_scored.parquet`(10,127행, 최종 8피처, `artifact_id c751c63d5b58`)을 `Attrition_Flag`
@@ -270,3 +278,24 @@ StratifiedKFold 홀드아웃으로 채점하고, 1-6a 리포트의 헤드라인 
 - **xgboost 3.3 + shap 0.52 조합**: `XGBClassifier`가 `enable_categorical=True`를 기본으로 켜고, shap는
   그 플래그만 보고 interventional 모드를 거부한다(범주형 미사용이어도). `enable_categorical=False`를
   명시하면 해결되며 예측은 비트 단위로 동일하다(실측).
+
+## Deferred from: code review of 3-0-oof-scores-platt-calibration (2026-07-22)
+
+- **`scale_pos_weight`가 전체 `y`에서 계산돼 폴드 모델에 상속된다** — `make_xgboost(y, seed)`가 전체
+  라벨로 estimator를 구성한 뒤 `cross_val_predict`가 clone한다. 각 폴드 모델이 홀드아웃 폴드의 클래스
+  비율을 하이퍼파라미터로 물려받으므로, "그 고객을 학습에 쓰지 않았다"(AC1)는 주장에 하이퍼파라미터
+  경로의 구멍이 남는다. 효과는 작을 것으로 보이나 3-0의 서사가 "낙관성 제거"인 이상 기록해 둔다.
+- **`oof_scores`와 `pr_auc_cv`가 폴드 분할을 공유하지 않는다** — 각자 `StratifiedKFold`를 만들어 동일한
+  폴드 학습을 두 번 수행한다(스토리 Dev Notes가 "중복 계산하지 말 것"이라 경고한 바로 그것이 절반만
+  지켜졌다). 또 `fit_and_compare` docstring의 "pooled OOF 0.9507 vs per-fold mean 0.9508" 근거는 한쪽의
+  `shuffle`/`n_splits`/seed 전달이 바뀌면 무효가 되는데 이를 지킬 테스트가 없다.
+- **항등 테스트 4건** — `test_output_stays_inside_zero_one`(`predict_proba`는 정의상 [0,1]),
+  `test_repeated_fits_agree`(lbfgs 결정론), `test_inputs_are_not_mutated`(`to_numpy(dtype=float)`는 항상
+  복사), `test_a_different_seed_changes_the_folds_and_the_scores`(음성 단언 + 60행 소표본이라 flaky).
+  어떤 구현 결함으로도 실패하지 않는다. 고정해야 할 것은 "동일 seed → 동일 폴드 인덱스"인데 그건
+  검사되지 않는다.
+- **보정기 수렴이 검사되지 않는다** — `LogisticRegression()`에 `max_iter` 미지정(기본 100),
+  `n_iter_` 미확인. lbfgs가 수렴하지 못하면 `ConvergenceWarning`만 남기고 덜 적합된 계수로 정상
+  반환한다. 현 데이터는 `n_iter=8`로 여유가 크지만, 이 모듈의 정당성 전체가 "계수가 양수이고 시그모이드
+  모양이 맞다"에 걸려 있으므로 조용한 통과 경로가 남는 것은 이 파일의 fail-fast 기조와 어긋난다.
+

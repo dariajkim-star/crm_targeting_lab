@@ -489,8 +489,10 @@ def test_infinity_on_the_value_axis_is_refused() -> None:
 
 @pytest.mark.parametrize("rogue", [-0.4, 1.7])
 def test_a_risk_score_outside_zero_one_is_refused(rogue: float) -> None:
-    """M12. `churn_score` is a probability by contract - a score on some other
-    scale would still produce perfectly plausible quadrants."""
+    """M12. `churn_score` is not a probability, but it IS bounded to [0, 1] by
+    contract - it comes off `predict_proba`. Story 3-0 dropped the probability
+    CLAIM, not the range: a score on some other scale would still produce
+    perfectly plausible quadrants, which is what this refuses."""
     risk, value = _paired([0.1, 0.2, rogue], [1.0, 2.0, 3.0])
 
     with pytest.raises(ValueError, match=r"outside \[0, 1\]"):

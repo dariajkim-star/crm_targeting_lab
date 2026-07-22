@@ -1,13 +1,17 @@
 # 2x2 공식 판정 리포트 (스토리 3-1, CAP-5 / FR11)
 
-- 산출일: 2026-07-22 · **스토리 3-0 재산출본**(out-of-fold 점수 기준) · 테스트 **330 passed**
+- 산출일: 2026-07-22 · **스토리 3-0 재산출본**(out-of-fold 점수 기준) · 테스트 **337 passed**(3-0 코드리뷰 반영 후)
 - **점수 기준**: `churn_score` = **out-of-fold**. 초판은 in-sample 점수였다(스토리 3-0이 교체).
 - 커밋 포인터 (외부 리뷰 M6 — 하나로 뭉뚱그리면 재현이 안 된다):
-  - `data_artifact_commit`: `3df99c3` — `churn_scored.parquet`(`artifact_id c751c63d5b58`)을 만든 커밋
+  - `data_artifact_commit`: `3b32749` — 이 리포트의 수치를 만든 `churn_scored.parquet`(`artifact_id 9e1a4d71800f`, OOF + Platt)을 만든 커밋
+    - (초판 수치의 출처는 `3df99c3` / `artifact_id c751c63d5b58` — in-sample. 그 id로는 아래 수치가 재현되지 않는다)
   - `implementation_commit`: `cb7ecff` — `matrix.py` 최초 구현 (272 → 294 passed)
-  - `report_generated_commit`: 이 문서와 같은 커밋 — 리뷰 반영 후 재산출 (309 passed)
-  - 판정 수치 자체는 세 시점에서 동일하다(실현 컷·분면 인원 불변). 바뀐 것은 계약·검증·문구다.
-- 대상: BankChurners 10,127행 (`data/churn_scored.parquet`, `artifact_id c751c63d5b58`, 예측자 8개)
+  - `report_generated_commit`: 이 문서와 같은 커밋 — 스토리 3-0의 OOF 전환 반영 후 재산출
+  - **판정 수치는 3-0에서 이동했다**: 실현 컷 `0.126842` → `0.132753`, 분면 `446/2086/4621/2974` →
+    `443/2089/4624/2971`(220명 재배정). 원인은 보정이 아니라 **in-sample → OOF 전환**이며 Platt은
+    한 명도 바꾸지 않았다. 3-1 구현(`cb7ecff`)까지의 세 시점에서 수치가 동일했다는 초판 서술은
+    그 구간에 한해 참이었고, 3-0이 그 구간을 끝냈다.
+- 대상: BankChurners 10,127행 (`data/churn_scored.parquet`, `artifact_id 9e1a4d71800f`, 예측자 8개)
 - 재현: `crm/campaign/matrix.py::assign_quadrant()` — 이 리포트의 모든 수치는 커밋·테스트된 이 함수가 만든다(conventions 4항)
 
 > **무단위 표기**(NFR3): BankChurners는 통화 단위가 없다. 이 문서의 모든 금액성 수치에 통화 기호를

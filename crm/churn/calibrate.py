@@ -57,17 +57,20 @@ __all__ = ["CALIBRATED_COLUMN", "apply_calibration", "fit_calibrator"]
 CALIBRATED_COLUMN = "churn_prob_calibrated"
 
 
-def _validate_scores(scores: pd.Series) -> np.ndarray:
+def _validate_scores(scores: pd.Series, caller: str) -> np.ndarray:
+    # `caller` is named rather than inferred: both public functions share this
+    # helper, and a message that says "fit_calibrator" while the failure came
+    # from apply_calibration sends the reader to a call that never happened.
     if scores.empty:
         raise ValueError(
-            "fit_calibrator received an empty score series. An empty population "
-            "cannot state what a probability means."
+            f"{caller} received an empty score series. An empty population "
+            f"cannot state what a probability means."
         )
     values = scores.to_numpy(dtype=float)
     if not np.isfinite(values).all():
         raise ValueError(
-            "fit_calibrator requires finite scores; NaN or infinity would be "
-            "carried straight into the fitted sigmoid."
+            f"{caller} requires finite scores; NaN or infinity would be "
+            f"carried straight into the fitted sigmoid."
         )
     return values
 
@@ -79,7 +82,9 @@ def fit_calibrator(oof_scores: pd.Series, y: pd.Series) -> LogisticRegression:
         oof_scores: Out-of-fold risk scores - each produced by a model that did
             NOT train on that customer. Passing in-sample scores here is a
             silent correctness bug, not an error this function can detect.
-        y: The observed binary outcome, aligned positionally with ``oof_scores``.
+        y: The observed binary outcome. Must share ``oof_scores``' index - the
+            fit joins the two by position, so the index is the only thing that
+            can prove the pair belongs to the same customer.
 
     Returns:
         The fitted calibrator, to be handed to :func:`apply_calibration`. It is
@@ -89,14 +94,35 @@ def fit_calibrator(oof_scores: pd.Series, y: pd.Series) -> LogisticRegression:
         swapped without the ``artifact_id`` changing.
 
     Raises:
-        ValueError: on empty input, non-finite scores, mismatched lengths, or a
-            single-class ``y``.
+        ValueError: on mismatched lengths or indexes, empty input, non-finite
+            scores or labels, a single-class ``y``, or a fit that is not
+            strictly increasing.
     """
-    values = _validate_scores(oof_scores)
+    # Pairing is checked BEFORE the contents of either side. A collapsed upstream
+    # join arrives here as an empty or short score series, and reporting that as
+    # "empty score series" names the symptom while hiding the cause.
     if len(oof_scores) != len(y):
         raise ValueError(
             f"fit_calibrator needs one label per score: got {len(oof_scores)} "
-            f"and {len(y)}."
+            f"and {len(y)}. A length mismatch means the score and the outcome "
+            f"came from different populations, not that one of them is short."
+        )
+    if not oof_scores.index.equals(y.index):
+        # `crm/campaign/matrix.py` refuses mismatched indexes for exactly this
+        # reason and this pairing is the more dangerous one: the fit below drops
+        # to numpy and joins by POSITION, so a reordering upstream produces a
+        # perfectly plausible sigmoid fitted against the wrong customers'
+        # outcomes. Nothing downstream could distinguish it from a good fit.
+        raise ValueError(
+            "fit_calibrator needs the score and the label to share an index; "
+            "they are aligned by position, so a differing index means the pair "
+            "is not the same customer."
+        )
+    values = _validate_scores(oof_scores, "fit_calibrator")
+    if not np.isfinite(y.to_numpy(dtype=float)).all():
+        raise ValueError(
+            "fit_calibrator requires a finite outcome for every customer; a "
+            "missing label is not a negative one."
         )
     classes = set(pd.unique(y))
     if classes != {0, 1}:
@@ -109,7 +135,26 @@ def fit_calibrator(oof_scores: pd.Series, y: pd.Series) -> LogisticRegression:
     # No regularisation sweep, no class_weight: Platt scaling is a one-parameter
     # (plus intercept) correction by definition, and anything richer would start
     # re-learning the ranking the model already produced.
-    return LogisticRegression().fit(values.reshape(-1, 1), y.to_numpy())
+    model = LogisticRegression().fit(values.reshape(-1, 1), y.to_numpy())
+
+    # The single property this module exists to guarantee is NOT guaranteed by
+    # the fit - it is a fact about the data. A score that ranks backwards (or
+    # not at all) produces a non-positive coefficient, and `apply_calibration`
+    # then becomes strictly DECREASING while the mean still lands exactly on the
+    # observed rate. No downstream metric would show it: measured on a reversed
+    # signal, coef=-10.49 with mean 0.2001 against an actual 0.2000. Refusing a
+    # single-class `y` above but accepting a reversed fit here would be the same
+    # omission with a different face.
+    coef = float(model.coef_[0][0])
+    if coef <= 0.0:
+        raise ValueError(
+            f"Platt fit is not strictly increasing (coef={coef:.6g}). The "
+            f"calibrated probability would not rank customers the way the score "
+            f"does, so expected-savings arithmetic built on it would be inverted "
+            f"or flat. This means the scores do not predict the outcome, not "
+            f"that the calibration needs tuning."
+        )
+    return model
 
 
 def apply_calibration(calibrator: LogisticRegression, scores: pd.Series) -> pd.Series:
@@ -117,12 +162,15 @@ def apply_calibration(calibrator: LogisticRegression, scores: pd.Series) -> pd.S
 
     Returns:
         ``Series[float]`` named :data:`CALIBRATED_COLUMN`, indexed exactly like
-        ``scores``. Strictly increasing in the input, so the ranking - and every
-        story 3-1 quadrant derived from it - is preserved exactly.
+        ``scores``. Strictly increasing in the input - enforced at fit time by
+        :func:`fit_calibrator`, not assumed here - so the ranking is preserved
+        exactly and story 3-2's expected savings order customers the same way
+        the 2x2 does. (Story 3-1 reads ``churn_score`` directly and so does not
+        depend on this; the two-track split moved the exposure to 3-2.)
 
     Raises:
         ValueError: on empty input or non-finite scores.
     """
-    values = _validate_scores(scores)
+    values = _validate_scores(scores, "apply_calibration")
     calibrated = calibrator.predict_proba(values.reshape(-1, 1))[:, 1]
     return pd.Series(calibrated, index=scores.index, name=CALIBRATED_COLUMN)

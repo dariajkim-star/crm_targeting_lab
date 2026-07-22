@@ -102,14 +102,18 @@ BankChurners 고객의 **이탈 위험을 cross-sectional로 분류**하는 base
 
 - `models/churn_model.joblib` — 학습된 XGBoost(원자적 저장). gitignore.
 - `models/churn_model.meta.json` — **AD-5 정체성 기록(1-6b에서 추가)**. gitignore.
-- `data/churn_scored.parquet` — `CLIENTNUM` + `churn_prob` + **`artifact_id`**(+ AD-13 신선도 meta).
+- `data/churn_scored.parquet` — `CLIENTNUM` + `churn_score` + `churn_prob_calibrated` + **`artifact_id`**(+ AD-13 신선도 meta).
+  **스토리 3-0에서 2컬럼이 됐다**: `churn_score`는 raw OOF(순위 전용), `churn_prob_calibrated`는
+  Platt 보정(확률 해석 전용). `churn_prob`이라는 이름은 더 이상 없다.
 - `data/churn_shap.parquet` — **1-7 추가**. `CLIENTNUM` + 예측자 8개의 SHAP 값 + `artifact_id`(+ AD-13 meta).
   요인 해석은 [churn-drivers-actions-1-7.md](churn-drivers-actions-1-7.md).
 
 ## 아티팩트 정체성 (AD-5, 1-6b에서 확립)
 
-`artifact_id`는 **직렬화된 모델 바이트의 SHA-256**이다. 같은 데이터·같은 seed로 재학습하면 같은 id가 나온다
-(내용이 같으면 같은 아티팩트). 실측 재현: 별도 출력 경로로 stage를 다시 돌려도 id와 `churn_prob`이 완전 동일.
+`artifact_id`는 **직렬화된 `{model, calibrator}` 번들 바이트의 SHA-256**이다(스토리 3-0에서 모델 단독
+해시에서 확장 — 보정기가 두 번째 적합 객체이므로, 모델만 덮으면 보정기를 바꿔치기해도 id가 그대로다).
+같은 데이터·같은 seed로 재학습하면 같은 id가 나온다(내용이 같으면 같은 아티팩트). 실측 재현: 별도 출력
+경로로 stage를 다시 돌려도 id와 `churn_score`·`churn_prob_calibrated`가 완전 동일.
 
 ```json
 {

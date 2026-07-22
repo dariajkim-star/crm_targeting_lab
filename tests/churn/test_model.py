@@ -205,6 +205,24 @@ def test_oof_scores_come_from_models_that_did_not_see_the_customer():
     assert (in_sample - y.mean()).abs().mean() > (oof - y.mean()).abs().mean()
 
 
+def test_oof_scores_refuse_a_minority_class_too_small_for_the_folds():
+    """`cross_val_predict` would not refuse this - it warns and carries on.
+
+    With fewer positives than folds, at least one fold trains without a single
+    positive and scores its entire holdout with one constant. Measured before
+    the guard: n=50 with 3 positives produced 3 distinct values across all 50
+    customers - a ranking that looks confident and means nothing. `pr_auc_cv`
+    has always refused it; `oof_scores` is a public entry point and now does too.
+    """
+    feat = _features(50, seed=11)
+    raw = _raw_with_signal(feat, seed=11)
+    x, y = build_xy(feat, raw)
+    y = pd.Series([1] * 3 + [0] * (len(y) - 3), index=y.index, name=y.name)
+
+    with pytest.raises(ValueError, match="below n_splits"):
+        oof_scores(x, y, seed=RANDOM_SEED)
+
+
 def test_oof_scores_are_deterministic():
     feat = _features(60, seed=3)
     raw = _raw_with_signal(feat, seed=3)

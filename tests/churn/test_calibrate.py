@@ -95,9 +95,16 @@ def test_output_stays_inside_zero_one(scores_and_labels) -> None:
 
 
 def test_index_and_name_are_preserved(scores_and_labels) -> None:
-    """Consumers join on the index; 3-2 selects by column name."""
+    """Consumers join on the index; 3-2 selects by column name.
+
+    Both sides are reindexed, not just the scores: `fit_calibrator` now requires
+    the pair to share an index, so moving one alone is no longer a valid call -
+    it is the very mispairing the guard exists to catch.
+    """
     scores, y = scores_and_labels
-    scores.index = pd.Index(range(1000, 1000 + len(scores)))
+    moved = pd.Index(range(1000, 1000 + len(scores)))
+    scores.index = moved
+    y.index = moved
     calibrator = fit_calibrator(scores, y)
 
     calibrated = apply_calibration(calibrator, scores)
@@ -141,11 +148,69 @@ def test_a_single_class_is_refused() -> None:
         fit_calibrator(scores, pd.Series([0, 0, 0, 0]))
 
 
+def test_a_reversed_signal_is_refused() -> None:
+    """The monotonicity above is a fact about the DATA, so it needs a guard.
+
+    ``test_calibration_is_strictly_monotone`` proves the property on one
+    well-behaved fixture. Feed the same fitter a score that ranks backwards and
+    the fitted sigmoid is strictly DECREASING - and nothing downstream notices,
+    because an intercept still puts the mean on the observed rate. Measured
+    before the guard existed: coef=-10.49, mean 0.2001 against an actual 0.2000.
+    """
+    rng = np.random.default_rng(0)
+    y = pd.Series([0] * 800 + [1] * 200)
+    backwards = np.where(y == 1, rng.uniform(0.001, 0.45, len(y)), rng.uniform(0.4, 0.999, len(y)))
+
+    with pytest.raises(ValueError, match="not strictly increasing"):
+        fit_calibrator(pd.Series(backwards, name="churn_score"), y)
+
+
+def test_a_score_with_no_signal_is_refused() -> None:
+    """The quiet case: noise, not reversal.
+
+    A score unrelated to the outcome yields a coefficient near zero of either
+    sign - here -0.185. The calibrated column would be an almost-flat band at
+    the base rate, which reads as a plausible probability while carrying no
+    information. This is the failure the single-class check already refuses,
+    arriving through a door that check does not cover.
+    """
+    rng = np.random.default_rng(7)
+    y = pd.Series([0] * 800 + [1] * 200)
+    noise = pd.Series(rng.uniform(0.0, 1.0, len(y)), name="churn_score")
+
+    with pytest.raises(ValueError, match="not strictly increasing"):
+        fit_calibrator(noise, y)
+
+
 def test_mismatched_lengths_are_refused(scores_and_labels) -> None:
     scores, y = scores_and_labels
 
     with pytest.raises(ValueError):
         fit_calibrator(scores, y.iloc[:-1])
+
+
+def test_a_mismatched_index_is_refused(scores_and_labels) -> None:
+    """Same length, same customers, different order - the silent mispairing.
+
+    The fit drops to numpy and joins by position, so this produces a perfectly
+    well-formed sigmoid fitted against the wrong customers' outcomes. No metric
+    downstream can tell it from a good fit, which is why it is refused here
+    rather than tolerated.
+    """
+    scores, y = scores_and_labels
+
+    with pytest.raises(ValueError, match="share an index"):
+        fit_calibrator(scores, y.set_axis(y.index[::-1]))
+
+
+def test_a_non_finite_label_is_refused(scores_and_labels) -> None:
+    """A missing outcome is not a negative one."""
+    scores, y = scores_and_labels
+    y = y.astype(float)
+    y.iloc[0] = float("nan")
+
+    with pytest.raises(ValueError, match="finite outcome"):
+        fit_calibrator(scores, y)
 
 
 def test_non_finite_scores_are_refused(scores_and_labels) -> None:

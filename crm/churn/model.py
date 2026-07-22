@@ -325,6 +325,21 @@ def oof_scores(x: pd.DataFrame, y: pd.Series, seed: int = RANDOM_SEED) -> pd.Ser
         ``Series[float]`` named ``churn_score``, indexed exactly like ``x``.
         A RANKING signal - see :mod:`crm.churn.calibrate` for the probability.
     """
+    # Same CV-validity guard as `pr_auc_cv`. Reached independently: this is a
+    # public entry point, and `cross_val_predict` does not refuse a fold with no
+    # positives - it emits a warning and returns a constant for everyone in it.
+    # Measured on n=50 with 3 positives: no exception, 3 distinct values across
+    # all 50 customers, which would read downstream as a confident ranking.
+    counts = y.value_counts()
+    if set(counts.index) != {0, 1}:
+        raise ValueError("y must contain both classes 0 and 1 for out-of-fold scoring")
+    if int(counts.min()) < CHURN_CV_FOLDS:
+        raise ValueError(
+            f"minority class count {int(counts.min())} is below "
+            f"n_splits={CHURN_CV_FOLDS}; some folds would train without a single "
+            f"positive and score their whole holdout with one constant."
+        )
+
     folds = StratifiedKFold(n_splits=CHURN_CV_FOLDS, shuffle=True, random_state=seed)
     proba = cross_val_predict(make_xgboost(y, seed), x, y, cv=folds, method="predict_proba")
     return pd.Series(proba[:, 1], index=x.index, name=SCORE_COLUMN)
@@ -350,7 +365,10 @@ class ChurnResult:
     and the CV comparison figures for the report."""
 
     model: XGBClassifier
-    calibrator: object  # Platt, fitted on the OOF scores (story 3-0)
+    # Typed, not `object`: `fit_calibrator` returns a fitted LogisticRegression
+    # and widening it here let a ChurnResult carry `calibrator=None` past the
+    # type checker - which would serialise a bundle with a hole in it.
+    calibrator: LogisticRegression  # Platt, fitted on the OOF scores (story 3-0)
     scored: pd.DataFrame  # CLIENTNUM + churn_score + churn_prob_calibrated
     x: pd.DataFrame  # the predictors the model was fit on, CLIENTNUM-indexed:
     # SHAP must explain THESE rows in THIS order, and rebuilding them in the
