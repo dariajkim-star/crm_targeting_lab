@@ -1,6 +1,6 @@
 # 2x2 공식 판정 리포트 (스토리 3-1, CAP-5 / FR11)
 
-- 산출일: 2026-07-22 · **스토리 3-0 재산출본**(out-of-fold 점수 기준) · 테스트 **337 passed**(3-0 코드리뷰 반영 후)
+- 산출일: 2026-07-22 · **스토리 3-0 재산출본**(out-of-fold 점수 기준) · 테스트 **338 passed**(3-0 코드리뷰 반영 후)
 - **점수 기준**: `churn_score` = **out-of-fold**. 초판은 in-sample 점수였다(스토리 3-0이 교체).
 - 커밋 포인터 (외부 리뷰 M6 — 하나로 뭉뚱그리면 재현이 안 된다):
   - `data_artifact_commit`: `3b32749` — 이 리포트의 수치를 만든 `churn_scored.parquet`(`artifact_id 9e1a4d71800f`, OOF + Platt)을 만든 커밋

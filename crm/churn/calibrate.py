@@ -135,6 +135,17 @@ def fit_calibrator(oof_scores: pd.Series, y: pd.Series) -> LogisticRegression:
     # No regularisation sweep, no class_weight: Platt scaling is a one-parameter
     # (plus intercept) correction by definition, and anything richer would start
     # re-learning the ranking the model already produced.
+    #
+    # Stated exactly, because the sentence above reads like "no regularisation"
+    # and that is not what this line does: sklearn's default is `penalty="l2",
+    # C=1.0`, so a mild shrinkage IS applied. Not swept is not the same as not
+    # present. On this artifact it is immaterial - the fitted coefficient is
+    # +10.4, far from where C=1.0 would bend it, and the calibrated mean lands
+    # on the observed rate (0.1607) exactly. Making it explicit (`C=1e10`, or a
+    # named config constant) is deferred rather than dismissed: it would move
+    # the calibrated probabilities slightly, and story 3-2 is about to fix its
+    # expected-savings baseline on them. The quadrants would not move either
+    # way - monotonicity is what protects them, not the penalty.
     model = LogisticRegression().fit(values.reshape(-1, 1), y.to_numpy())
 
     # The single property this module exists to guarantee is NOT guaranteed by

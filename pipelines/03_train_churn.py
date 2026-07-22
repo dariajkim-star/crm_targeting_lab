@@ -1,7 +1,7 @@
 """Stage 03: churn-RISK classifier, OUT-OF-FOLD scores + Platt calibration, SHAP,
 AD-5 identity (AD-6: snapshot label, not a forecast). The artifact is a
 {model, calibrator} bundle so identity covers both fitted objects. SHAP is
-computed HERE only; skips when bundle, record and BOTH derived outputs agree."""
+computed HERE only; skips when identity AND the column contract both hold."""
 import logging
 import sys
 from pathlib import Path
@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pandas as pd  # noqa: E402
 from crm import config  # noqa: E402
-from crm.churn.artifact import outputs_share_identity, save_model_with_identity  # noqa: E402
+from crm.churn.artifact import outputs_are_current, save_model_with_identity  # noqa: E402
 from crm.churn.explain import build_shap_output  # noqa: E402
 from crm.churn.model import attach_artifact_id, fit_and_compare  # noqa: E402
 from crm.common.atomic import write_parquet_with_meta  # noqa: E402
@@ -20,7 +20,7 @@ def main(input_paths: list[Path], output_paths: list[Path]) -> None:
     model_out, scored_out, shap_out = output_paths
     verify_inputs([features_src], expected_stage="02_features")
     verify_inputs([raw_src], expected_stage="01_download")
-    if (model_out.exists() and outputs_share_identity(model_out, scored_out, shap_out)
+    if (model_out.exists() and outputs_are_current(model_out, scored_out, shap_out)
             and not is_output_stale(scored_out, [features_src, raw_src],
                                     expected_stage="03_train_churn")):
         return

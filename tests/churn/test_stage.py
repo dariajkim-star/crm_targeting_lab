@@ -16,6 +16,7 @@ import pandas as pd
 
 from crm.churn.artifact import artifact_id, model_meta_path, serialize_model
 from crm.churn.model import ALL_PREDICTOR_COLUMNS, fit_and_compare
+from crm.common.atomic import write_parquet_with_meta
 from crm.common.freshness import build_meta
 
 
@@ -190,6 +191,42 @@ def test_stage_skips_a_consistent_pair(tmp_path):
     stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
 
     assert json.loads(model_meta_path(model_p).read_text(encoding="utf-8"))["trained_at"] == trained_at
+
+
+def test_pre_3_0_schema_outputs_force_a_rerun(tmp_path):
+    """The gate must not skip on outputs that are consistent but out of date.
+
+    This is the story 3-0 migration itself: a scored file written before the
+    column split is perfectly self-consistent - model, record and both derived
+    files agree - and `crm/config.py` did not change, so nothing else in the
+    freshness path has a reason to invalidate it. Identity records WHICH model
+    wrote the outputs, never WHICH COLUMNS, so without a schema check the stage
+    returns early and the retired `churn_prob` survives the upgrade.
+
+    `data/` outputs are kept across branch switches in this repo, so this is the
+    normal way to arrive here, not a contrived one.
+    """
+    stage = _load_stage_03()
+    feat_p, raw_p = _seed_inputs(tmp_path)
+    model_p = tmp_path / "churn_model.joblib"
+    scored_p = tmp_path / "churn_scored.parquet"
+    shap_p = tmp_path / "churn_shap.parquet"
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
+    trained_at = json.loads(model_meta_path(model_p).read_text(encoding="utf-8"))["trained_at"]
+
+    # Rewrite the scores under the OLD schema, keeping the identity stamp intact
+    # so the only thing wrong is the column contract.
+    scored = pd.read_parquet(scored_p)
+    old = scored[["CLIENTNUM", "churn_score", "artifact_id"]].rename(
+        columns={"churn_score": "churn_prob"}
+    )
+    meta = build_meta("03_train_churn", [feat_p, raw_p], rows=len(old))
+    write_parquet_with_meta(scored_p, old, meta)
+
+    stage.main([feat_p, raw_p], [model_p, scored_p, shap_p])
+
+    assert json.loads(model_meta_path(model_p).read_text(encoding="utf-8"))["trained_at"] != trained_at
+    assert "churn_prob" not in pd.read_parquet(scored_p).columns
 
 
 def test_stage_output_is_deterministic_across_two_runs(tmp_path):

@@ -60,7 +60,8 @@ from typing import Any, Iterable, Sequence
 import joblib
 import pandas as pd
 
-from crm.churn.model import ALL_PREDICTOR_COLUMNS
+from crm.churn.calibrate import CALIBRATED_COLUMN
+from crm.churn.model import ALL_PREDICTOR_COLUMNS, SCORE_COLUMN
 from crm.common.atomic import write_with_meta
 from crm.common.freshness import file_sha256, sha256_bytes
 
@@ -76,6 +77,7 @@ __all__ = [
     "verify_artifact_identity",
     "identity_is_consistent",
     "outputs_share_identity",
+    "outputs_are_current",
 ]
 
 _LOG = logging.getLogger(__name__)
@@ -241,9 +243,15 @@ def read_verified_model_meta(model_path: Path) -> dict[str, Any]:
 def verify_artifact_identity(expected: str, actual: str, *, context: str) -> None:
     """Fail immediately when two ids describe different model content (AD-5).
 
-    A warning would be worse than useless here: the whole point is that a
-    ``churn_score`` and an explanation of it must not be presented together
-    unless they describe the same model.
+    A warning would be worse than useless here: the whole point is that a score
+    and an explanation of it must not be presented together unless they came
+    from the same TRAINING RUN.
+
+    "Same run", not "same model object" - AD-5 was revised for this in story
+    3-0. `churn_prob_calibrated` and the SHAP values do come off the one model
+    in the bundle, but `churn_score` is out-of-fold: each customer is scored by
+    a fold model that excluded them, and those models are not kept. Demanding
+    one model object would be demanding that OOF not be OOF.
     """
     if expected != actual:
         raise ArtifactIdentityError(
@@ -264,6 +272,43 @@ def outputs_share_identity(model_path: Path, *derived_paths: Path) -> bool:
     if not derived_paths:
         raise ValueError("pass at least one derived output to check")
     return all(identity_is_consistent(model_path, path) for path in derived_paths)
+
+
+def outputs_are_current(model_path: Path, scored_path: Path, shap_path: Path) -> bool:
+    """True only if the outputs are BOTH the same training run AND this schema.
+
+    Identity alone is not enough to skip the stage. `artifact_id` records WHICH
+    model produced the outputs, never WHICH COLUMNS it wrote - so a set of
+    outputs from before story 3-0 is perfectly self-consistent (model, record
+    and both derived files all agree) while carrying the retired `churn_prob`
+    instead of `churn_score` and `churn_prob_calibrated`.
+
+    `config_hash` does not catch it either: story 3-0 changed no value in
+    `crm/config.py`, so the staleness check sees nothing to invalidate. The gate
+    would skip, the old in-sample column would survive, and stage 04/05 could
+    build a mart on it - the one path where this failure is silent (a consumer
+    reading the calibrated column just raises KeyError).
+
+    Observed, not hypothetical: `data/` outputs are kept across branch switches
+    in this repo, which is exactly the situation that produces it.
+
+    Composed rather than folded into `outputs_share_identity`: that function is
+    the 1-6b identity contract, hardened over two external review rounds, and it
+    answers a different question. Layering here keeps it reusable and keeps this
+    check honest about being a schema check, not an identity one.
+    """
+    if not outputs_share_identity(model_path, scored_path, shap_path):
+        return False
+    try:
+        columns = set(pd.read_parquet(scored_path).columns)
+    except Exception as err:  # noqa: BLE001 - a gate cannot prove it, so recompute
+        _LOG.info("column contract unmet: cannot read %s (%s)", scored_path, err)
+        return False
+    missing = {SCORE_COLUMN, CALIBRATED_COLUMN} - columns
+    if missing:
+        _LOG.info("column contract unmet: %s lacks %s", scored_path, sorted(missing))
+        return False
+    return True
 
 
 def identity_is_consistent(model_path: Path, scored_path: Path) -> bool:

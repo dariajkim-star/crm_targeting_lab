@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-22 (3-0 code-review patch 15건 반영 -> in-progress, decision 4건 미결; 337 passed)
+# last_updated: 2026-07-22 (3-0 code-review 전건 종결 -> done; 338 passed)
 # project: crm-targeting-lab
 # project_key: NOKEY
 # tracking_system: file-system
@@ -121,7 +121,7 @@ development_status:
   # must be out-of-fold, and the probability used for money must be calibrated.
   # Runs AFTER 3-1 closes and BEFORE 3-2 (3-2 needs the calibrated column).
   # Rationale + measurements: deferred-work.md "A2 결정".
-  3-0-oof-scores-platt-calibration: in-progress
+  3-0-oof-scores-platt-calibration: done
   3-1-official-quadrant-assignment: done
   3-2-campaign-savings-simulator: ready-for-dev
   3-3-budget-constrained-target-priority: backlog
