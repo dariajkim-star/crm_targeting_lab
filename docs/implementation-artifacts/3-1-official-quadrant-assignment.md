@@ -280,7 +280,10 @@ config 소스를 **`sys.modules`에 없는 합성 모듈명**으로 `exec`하기
 - **config 재실행 영향 없음**: `QUADRANT_RULE` 추가로 `config_hash`가 바뀌지만, `matrix.py`는 파이프라인
   단계가 아니라 순수 함수라 산출물을 만들지 않는다. 기존 산출물은 그대로 두고 판정만 세션에서 수행했다
   (M2 판정 — E3 산출물은 세션 리포트, 공식 자리는 4-1 마트).
-- **테스트**: 272 → **293 passed** (+21), 회귀 0. 구조 가드 전종 green.
+- **테스트**: 272 → **294 passed** (+22), 회귀 0. 구조 가드 전종 green.
+- **리뷰 번들 작성 중 자체 발견 1건**: AC6의 단조불변 논증은 경우가 둘인데(임계값이 순서통계량 **사이**
+  vs 데이터 포인트에 **정확히**) 테스트가 전자만 덮고 있었다. 리포트는 일반적으로 주장하고 있었으므로
+  "문서가 테스트를 앞선" 상태였다 — 후자 케이스 테스트를 추가해 해소(293 → 294).
 
 ### File List
 
@@ -298,5 +301,5 @@ config 소스를 **`sys.modules`에 없는 합성 모듈명**으로 `exec`하기
 
 | 날짜 | 변경 |
 |---|---|
-| 2026-07-22 | 스토리 3-1 구현: `QUADRANT_RULE`(분위수 risk q0.75 / value q0.50, `>=` 상단) + `Quadrant` Enum(ASCII) + `assign_quadrant()`. 실현 컷 0.126842 / 3899.0, 분면 446/2086/4621/2974. AC5 근거로 중앙값 붕괴·AD-1 탈락 후보 기재, AC6은 순위 전용이라 A2 비결합 확정. 변이 6종 KILL. config에 dataclass 불가(AD-4 가드 exec) 실측 → NamedTuple. 272 → 293 passed, 회귀 0. Status → review |
+| 2026-07-22 | 스토리 3-1 구현: `QUADRANT_RULE`(분위수 risk q0.75 / value q0.50, `>=` 상단) + `Quadrant` Enum(ASCII) + `assign_quadrant()`. 실현 컷 0.126842 / 3899.0, 분면 446/2086/4621/2974. AC5 근거로 중앙값 붕괴·AD-1 탈락 후보 기재, AC6은 순위 전용이라 A2 비결합 확정. 변이 6종 KILL. config에 dataclass 불가(AD-4 가드 exec) 실측 → NamedTuple. 272 → 294 passed(+1은 리뷰 번들 작성 중 발견한 단조불변 on-point 케이스), 회귀 0. Status → review |
 | 2026-07-22 | 스토리 3-1 create-story(수동 — BMAD config가 DX_project를 가리켜 스킬 미사용). AD-1 vs AD-12 충돌·중앙값 컷 붕괴·A2 결합 3건을 실측과 함께 사전 기록. Status → ready-for-dev. 기준선 caf16e6 / 272 passed |

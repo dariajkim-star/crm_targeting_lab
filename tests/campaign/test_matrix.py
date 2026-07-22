@@ -224,6 +224,34 @@ def test_a_strictly_increasing_transform_of_risk_changes_nothing() -> None:
     pd.testing.assert_series_equal(result, baseline)
 
 
+def test_rank_invariance_also_holds_when_the_cut_sits_on_a_data_point() -> None:
+    """The other half of the invariance argument, which n=8 does not exercise.
+
+    `Series.quantile` interpolates, so there are two cases and they need
+    different reasoning:
+
+      - cut strictly BETWEEN two order statistics (the n=8 fixture): the
+        interpolated cut moves to sit between the same two transformed
+        statistics, so the same customers clear it.
+      - cut exactly ON an order statistic (this n=5 fixture): the quantile
+        returns that value itself, and the transform maps it to the new cut.
+
+    Only the first case was covered. Without this test the report's general
+    claim - that A2's calibration decision cannot move any assignment - would
+    be broader than the evidence behind it.
+    """
+    risk, value = _paired(_EDGE_RISK, _EDGE_VALUE)
+    thresholds = quadrant_thresholds(risk, value)
+    assert risk.eq(thresholds.risk).any()  # the cut really is a data point
+
+    baseline = assign_quadrant(risk, value)
+    recalibrated = risk**3 / (risk**3 + (1 - risk) ** 3)
+
+    result = assign_quadrant(recalibrated, value)
+
+    pd.testing.assert_series_equal(result, baseline)
+
+
 # --- Hardcoded oracle --------------------------------------------------------
 
 

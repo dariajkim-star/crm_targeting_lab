@@ -1,6 +1,6 @@
 # 2x2 공식 판정 리포트 (스토리 3-1, CAP-5 / FR11)
 
-- 산출일: 2026-07-22 · 기준 커밋 `84f39ef` · 테스트 293 passed
+- 산출일: 2026-07-22 · 기준 커밋 `84f39ef` · 테스트 294 passed
 - 대상: BankChurners 10,127행 (`data/churn_scored.parquet`, `artifact_id c751c63d5b58`, 예측자 8개)
 - 재현: `crm/campaign/matrix.py::assign_quadrant()` — 이 리포트의 모든 수치는 커밋·테스트된 이 함수가 만든다(conventions 4항)
 
