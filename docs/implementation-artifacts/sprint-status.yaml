@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-22 (3-2 dev 완료 -> review; 338 -> 364 passed)
+# last_updated: 2026-07-22 (3-2 코드리뷰 종결 -> done; 376 passed. 다음 3-3 create-story)
 # project: crm-targeting-lab
 # project_key: NOKEY
 # tracking_system: file-system
@@ -123,7 +123,7 @@ development_status:
   # Rationale + measurements: deferred-work.md "A2 결정".
   3-0-oof-scores-platt-calibration: done
   3-1-official-quadrant-assignment: done
-  3-2-campaign-savings-simulator: review
+  3-2-campaign-savings-simulator: done
   3-3-budget-constrained-target-priority: backlog
   3-4-sensitivity-analysis-flip-region: backlog
   epic-3-retrospective: optional
