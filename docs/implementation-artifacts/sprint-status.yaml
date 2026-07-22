@@ -156,7 +156,7 @@ action_items:
   - epic: 1
     action: "epics.md에 에픽 실행 순서 변경(3 -> 2)과 근거 기록"
     owner: "Amelia"
-    status: open
+    status: done
   - epic: 1
     action: "3-2 액션 후보는 SPEC 예시가 아닌 1-7 실측 매핑(churn-drivers-actions-1-7.md)에서만 도출 — CAP-3 한도 불만형 예시가 실증에서 부정된 선례"
     owner: "Mary"

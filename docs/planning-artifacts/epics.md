@@ -97,6 +97,27 @@ FR 18/18 커버, 미매핑 없음.
 
 ## Epic List
 
+> ### ⚠️ 실행 순서 ≠ 에픽 번호 (2026-07-22, 에픽1 회고 결정)
+>
+> **실행 순서: Epic 1(done) → Epic 3 → Epic 2 → Epic 4.** 아래 배열은 SPEC의 **CAP 번호 순서**이지
+> 의존 순서가 아니다.
+>
+> **근거**
+> - **Epic 3은 Epic 1에만 의존한다** — 소비하는 것은 이탈확률(`churn_prob`)과 `customer_value`뿐이고
+>   둘 다 Epic 1에서 확정됐다. Epic 2 산출물은 하나도 쓰지 않는다.
+> - **Epic 2는 언제 해도 비용이 같다** — Online Retail II는 **AD-1 물리 격리 레인**이라 `crm/ltv/`가
+>   `crm/segment`·`crm/churn`을 import할 수 없고 BankChurners 유래 값도 쓸 수 없다. 위 Epic 2 설명이
+>   이미 *"E1·E3와 상호 독립"*이라고 적고 있다.
+> - **Epic 3이 포트폴리오 승부처다** — SPEC Success signal ②("무작위 타겟 대비 기대 절감액 X배")가
+>   여기서 나온다. Epic 1 산출물(요인·액션 매핑)이 3-2의 "무엇을 제안할 것인가"에 직결되므로,
+>   재료가 가장 뜨거운 시점에 붙이는 편이 낫다.
+>
+> **불변**: 에픽 **내부** 스토리 순서는 그대로다(Epic 3은 3-1 → 3-2 → 3-3 → 3-4). FR 커버리지·에픽
+> 경계·AD 귀속도 바뀌지 않는다 — **실행 순서만** 바뀐 것이다.
+>
+> 상세: `docs/implementation-artifacts/epic-1-retro-2026-07-22.md` 4-2절 ·
+> `sprint-status.yaml`의 EXECUTION ORDER OVERRIDE 주석
+
 ### Epic 1: 고객 이해 — 세그먼트와 이탈 위험
 BankChurners 레인 전체. 파이프라인 골격·`crm/config.py`·AD-13 meta 규약을 세운 뒤, 고객가치 단일 정의 → RFM 세그먼트 → XGBoost 이탈위험 → SHAP 요인 해석까지 완결한다. 이 에픽만으로 "누가 있고, 누가 왜 떠나는가"에 답하는 독립 산출물(세그먼트 프로필·페르소나·이탈 모델 비교표·액션 매핑)이 남는다.
 **FRs covered:** FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR10
