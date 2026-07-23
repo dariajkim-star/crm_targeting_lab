@@ -79,8 +79,11 @@ _CONFIG_WHITELIST = frozenset(
 # trees are machine-written and their filenames are not knowable in advance.
 _DATA_DIRS = frozenset({"data", "marts", "models"})
 # Tooling trees: never application code or config. `.claude` / `.playwright-mcp`
-# / editor dirs can appear at any time without a commit, so excluding them keeps
-# the AD-4 scan from flagging tool-generated JSON as a second config file.
+# / `_bmad` / editor dirs can appear at any time without a commit, so excluding
+# them keeps the AD-4 scan from flagging tool-owned TOML/JSON as a second config
+# file. `_bmad` is the BMAD story-workflow install (its own config.toml and
+# per-skill custom/*.toml live under it); it is project tooling, not application
+# configuration, the same category as `.claude`.
 _SKIP_DIRS = frozenset(
     {
         ".git",
@@ -90,6 +93,7 @@ _SKIP_DIRS = frozenset(
         "node_modules",
         ".claude",
         ".playwright-mcp",
+        "_bmad",
         ".vscode",
         ".idea",
     }
