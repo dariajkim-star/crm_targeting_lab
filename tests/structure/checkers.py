@@ -24,7 +24,14 @@ from pathlib import Path
 
 # Lane membership (AD-1). Each lane may not reference the other, and shared
 # utilities may not reference either.
-_LANE_A = ("crm.segment", "crm.churn")
+#
+# `crm.marts.customers` is registered PER-MODULE, not by the `crm.marts` package
+# prefix (story 4-1a): the customer mart assembles the BankChurners segment/churn
+# lane and so is Lane A, but a future `crm.marts.ltv` (story 4-2) would be Lane B,
+# and a package-level prefix would wrongly force that ltv mart into Lane A too.
+# Listing the module explicitly keeps the two mart modules on their correct lanes
+# and lets the guard forbid `crm.marts.customers` from importing `crm.ltv`.
+_LANE_A = ("crm.segment", "crm.churn", "crm.marts.customers")
 _LANE_B = ("crm.ltv",)
 _COMMON = "crm.common"
 

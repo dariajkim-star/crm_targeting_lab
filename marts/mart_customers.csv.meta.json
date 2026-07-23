@@ -1,0 +1,12 @@
+{
+  "stage": "05_marts",
+  "created_at": "2026-07-23T07:17:38.654956+00:00",
+  "config_hash": "e3f4d9647ae000bf054b2852efdcab5b80c7c0ccda1dab19f0742f67723b77fe",
+  "code_commit": "a08106b910eb889aeaf883c3d75432fb86e14f59",
+  "rows": 10127,
+  "inputs": {
+    "bankchurners.parquet": "2b48a9f6c40f15b9387a595f3ced82bc97d32276305d80c0304c015998633449",
+    "features_customers.parquet": "540dba50190df3599b0c1d1728e8600937adc8c044e8eea54f74726f339b7c79",
+    "churn_scored.parquet": "568523f523413c3d51e789ddd3c6df63235d6ccc006dde776046bc3acb823f59"
+  }
+}

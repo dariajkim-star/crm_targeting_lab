@@ -73,6 +73,19 @@ def write_parquet_with_meta(target: Path, frame: pd.DataFrame, meta: dict[str, A
     write_with_meta(target, lambda tmp: frame.to_parquet(tmp, index=False), meta)
 
 
+def write_bytes_with_meta(target: Path, data: bytes, meta: dict[str, Any]) -> None:
+    """Emit (raw bytes output + meta) atomically.
+
+    The bytes-shaped sibling of ``write_parquet_with_meta``: story 4-1a's mart is
+    a serialized CSV (deterministic bytes fixed by ``crm.marts.customers``), and
+    the pipeline stage cannot spell the writer closure itself because the
+    pipeline-shape guard forbids a stage defining any callable besides ``main``.
+    This module owns the write MECHANISM; the caller owns the bytes and the
+    policy of what/where (AD-9).
+    """
+    write_with_meta(target, lambda tmp: tmp.write_bytes(data), meta)
+
+
 def write_with_meta(
     target: Path,
     writer: Callable[[Path], None],

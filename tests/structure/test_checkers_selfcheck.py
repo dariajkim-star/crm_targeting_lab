@@ -102,6 +102,39 @@ def test_lane_checker_flags_submodule_via_parent_package(tmp_path: Path) -> None
     assert any("segment" in v and "ltv" in v for v in violations)
 
 
+def test_lane_checker_flags_customer_mart_importing_ltv(tmp_path: Path) -> None:
+    """Story 4-1a: `crm.marts.customers` is Lane A and may not touch crm.ltv.
+
+    The customer mart assembles the segment/churn lane, so importing the LTV lane
+    would cross AD-1. Registered per-module (not by the `crm.marts` prefix) so a
+    future `crm.marts.ltv` can be Lane B without this rule forcing it into A."""
+    root = _clean_tree(tmp_path)
+    _write(root, "crm/marts/__init__.py", "")
+    _write(root, "crm/marts/customers.py", "from crm.ltv import expected_ltv\n")
+
+    violations, scanned = checkers.find_lane_violations(root)
+
+    assert scanned > 0
+    assert any("marts.customers" in v and "ltv" in v for v in violations)
+
+
+def test_lane_checker_allows_customer_mart_consuming_lane_a(tmp_path: Path) -> None:
+    """The mart's real dependencies - segment, churn, campaign - are permitted."""
+    root = _clean_tree(tmp_path)
+    _write(root, "crm/marts/__init__.py", "")
+    _write(
+        root,
+        "crm/marts/customers.py",
+        "from crm.segment.value import customer_value\n"
+        "from crm.churn.artifact import read_verified_model_meta\n"
+        "from crm.campaign.matrix import assign_quadrant\n",
+    )
+
+    violations, _ = checkers.find_lane_violations(root)
+
+    assert not any("marts.customers" in v for v in violations)
+
+
 def test_lane_checker_passes_clean_tree(tmp_path: Path) -> None:
     root = _clean_tree(tmp_path)
 
