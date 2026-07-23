@@ -40,6 +40,16 @@ _CAMPAIGN_ORDER = ("matrix", "simulate", "priority", "sensitivity")
 _SELFCUT_MODULE = "crm/campaign/priority.py"
 _SELFCUT_METHODS = frozenset({"quantile", "percentile", "median"})
 
+# AD-12, symmetric guard for story 3-4. sensitivity.py CONSUMES the official
+# quadrant column (and, in its risk_quantile annex, `assign_quadrant` with a
+# replaced rule); it must never cut a quantile of its own. AD-12 names the
+# simulator and the sensitivity sweep explicitly, yet only priority.py was
+# mechanically guarded (story 3-3 code review). The self-cut signature is the
+# same threshold-forming call. This guard co-exists with the risk_quantile
+# sweep (D2): the sweep hands the quantile LEVEL to `matrix.assign_quadrant`,
+# which owns the `.quantile` call, so sensitivity.py itself carries none.
+_SENSITIVITY_SELFCUT_MODULE = "crm/campaign/sensitivity.py"
+
 # Pipeline stage shape (AD-8/AD-9).
 _PIPELINE_MAX_LINES = 40
 _PIPELINE_ALLOWED_DEF = "main"
@@ -242,6 +252,49 @@ def find_campaign_order_violations(root: Path) -> tuple[list[str], int]:
     return violations, len(files)
 
 
+def _find_selfcut_violations(root: Path, module_rel: str, label: str, mandate: str) -> tuple[list[str], int]:
+    """Scan one campaign module for a threshold-forming call (AD-12).
+
+    Shared by the priority (3-3) and sensitivity (3-4) guards: both consume
+    ``quadrant_official`` and neither may cut a quantile of its own, so the
+    mechanical check - a call to ``.quantile``/``.percentile``/``.median`` on any
+    object - is identical. ``label`` and ``mandate`` only shape the message so a
+    failure names the right module and rule.
+
+    Fail-closed: an unparseable module is a violation, not a skip.
+    """
+    violations: list[str] = []
+    target = root / module_rel
+    if not target.exists():
+        # Not yet written - report zero scanned so the coverage table shows the
+        # rule inspected nothing rather than passing quietly.
+        return violations, 0
+
+    module = _module_name(root, target)
+    try:
+        tree = ast.parse(target.read_text(encoding="utf-8"))
+    except SyntaxError as err:
+        return [
+            f"AD-12 {label} self-cut: {module} could not be scanned "
+            f"(syntax error at line {err.lineno}) - the rule fails closed"
+        ], 0
+    except UnicodeDecodeError:
+        return [f"AD-12 {label} self-cut: {target.name} is not valid UTF-8"], 0
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        # `series.quantile(...)` / `np.percentile(...)` - both are attribute
+        # accesses whose final name is the threshold-forming method.
+        if isinstance(func, ast.Attribute) and func.attr in _SELFCUT_METHODS:
+            violations.append(
+                f"AD-12 {label} self-cut: {module} calls .{func.attr}() - {mandate}"
+            )
+
+    return violations, 1
+
+
 def find_priority_selfcut_violations(root: Path) -> tuple[list[str], int]:
     """AD-12: priority.py consumes quadrant_official, never cuts its own.
 
@@ -255,37 +308,31 @@ def find_priority_selfcut_violations(root: Path) -> tuple[list[str], int]:
 
     Fail-closed: an unparseable module is a violation, not a skip.
     """
-    violations: list[str] = []
-    target = root / _SELFCUT_MODULE
-    if not target.exists():
-        # Not yet written - report zero scanned so the coverage table shows the
-        # rule inspected nothing rather than passing quietly.
-        return violations, 0
+    return _find_selfcut_violations(
+        root,
+        _SELFCUT_MODULE,
+        "priority",
+        "priority.py must consume quadrant_official, not compute a cut",
+    )
 
-    module = _module_name(root, target)
-    try:
-        tree = ast.parse(target.read_text(encoding="utf-8"))
-    except SyntaxError as err:
-        return [
-            f"AD-12 priority self-cut: {module} could not be scanned "
-            f"(syntax error at line {err.lineno}) - the rule fails closed"
-        ], 0
-    except UnicodeDecodeError:
-        return [f"AD-12 priority self-cut: {target.name} is not valid UTF-8"], 0
 
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        # `series.quantile(...)` / `np.percentile(...)` - both are attribute
-        # accesses whose final name is the threshold-forming method.
-        if isinstance(func, ast.Attribute) and func.attr in _SELFCUT_METHODS:
-            violations.append(
-                f"AD-12 priority self-cut: {module} calls .{func.attr}() - "
-                f"priority.py must consume quadrant_official, not compute a cut"
-            )
+def find_sensitivity_selfcut_violations(root: Path) -> tuple[list[str], int]:
+    """AD-12: sensitivity.py consumes quadrant_official, never cuts its own.
 
-    return violations, 1
+    The symmetric partner to :func:`find_priority_selfcut_violations` for story
+    3-4. AD-12 names the sensitivity sweep explicitly, but only priority.py was
+    mechanically guarded. The risk_quantile annex (D2) is designed to stay clear
+    of this: it hands the quantile LEVEL to ``matrix.assign_quadrant``, which
+    owns the ``.quantile`` call, so sensitivity.py itself computes no cut.
+
+    Fail-closed: an unparseable module is a violation, not a skip.
+    """
+    return _find_selfcut_violations(
+        root,
+        _SENSITIVITY_SELFCUT_MODULE,
+        "sensitivity",
+        "sensitivity.py must consume assign_quadrant, not compute a cut",
+    )
 
 
 def _stage_name_pattern_ok(name: str) -> bool:

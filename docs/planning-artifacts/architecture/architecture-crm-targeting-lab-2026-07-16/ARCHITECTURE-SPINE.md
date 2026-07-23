@@ -144,7 +144,7 @@ P1(credit-scorecard-lab)의 `scorecard/` + `pipelines/` 조합을 계승하되, 
 - **Rule:**
   - 의존은 한 방향으로만 흐른다 — `pipelines/` → `crm/` → `crm/config.py`. `crm/`은 `pipelines/`를 import하지 않는다.
   - `pipelines/NN_*.py`는 **파일당 40행 이하**, 허용 호출은 `crm.*` 함수·pandas read/write·logging뿐이며 `main` 외 `def`를 정의하지 않는다.
-  - `crm/campaign/` 내부도 한 방향이다: `matrix.py` → `simulate.py` → `sensitivity.py`. 역방향 import 금지. `matrix.py`는 예산·비용 개념을 모르고(4분면은 예산과 무관), `sensitivity.py`는 `simulate.py`를 파라미터만 바꿔 반복 호출할 뿐 산식을 재구현하지 않는다.
+  - `crm/campaign/` 내부도 한 방향이다: `matrix.py` → `simulate.py` → `priority.py` → `sensitivity.py`. 역방향 import 금지. `matrix.py`는 예산·비용 개념을 모르고(4분면은 예산과 무관), `priority.py`는 예산 제약 순위를(3-3), `sensitivity.py`는 `simulate.py`를 파라미터만 바꿔 반복 호출할 뿐 산식을 재구현하지 않는다(3-4가 체인 종단). 가드 상수 `_CAMPAIGN_ORDER`가 이 4단계를 강제한다.
   - `ast` 기반 import-graph 테스트가 AD-1 격리와 이 방향성을 기계적으로 검증한다.
 
 ### AD-10 — 퍼블리시는 공개 노출이다
@@ -246,7 +246,7 @@ crm-targeting-lab/
     common/                # stateless 순수 유틸만 (fit 상태 보유 금지 — AD-1)
     segment/               # CAP-1 RFM·K-means + value.py(AD-11 가치 단일정의)
     churn/                 # CAP-2,3 XGBoost·SHAP (BankChurners 계열)
-    campaign/              # matrix.py → simulate.py → sensitivity.py (AD-9 내부 방향)
+    campaign/              # matrix.py → simulate.py → priority.py → sensitivity.py (AD-9 내부 방향)
     ltv/                   # CAP-4 BG/NBD 데모 (Online Retail 계열, AD-1 격리)
   pipelines/               # 01_download → 02_features → 03_train_churn → 04_ltv_demo → 05_marts
   models/                  # 학습 아티팩트 + meta.json (gitignore, AD-5)

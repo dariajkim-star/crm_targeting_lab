@@ -9,11 +9,12 @@ starts biting the moment a matching file appears.
 
 | Rule | Enforces | Files scanned | Violations |
 |---|---|---|---|
-| AD-1 lane isolation | crm/segment and crm/churn never meet crm/ltv | 21 | 0 |
-| AD-9 layering | crm/ never imports pipelines/ | 21 | 0 |
-| AD-9 campaign order | matrix -> simulate -> priority -> sensitivity | 3 | 0 |
+| AD-1 lane isolation | crm/segment and crm/churn never meet crm/ltv | 22 | 0 |
+| AD-9 layering | crm/ never imports pipelines/ | 22 | 0 |
+| AD-9 campaign order | matrix -> simulate -> priority -> sensitivity | 4 | 0 |
 | AD-12 priority self-cut | priority.py consumes quadrant_official, never re-cuts | 1 | 0 |
+| AD-12 sensitivity self-cut | sensitivity.py consumes assign_quadrant, never re-cuts | 1 | 0 |
 | AD-8 pipeline shape | stages <=40 lines, main() only | 3 | 0 |
 | AD-1 stateless common | crm/common holds no fitted state | 4 | 0 |
 | AD-4 config single source | crm/config.py is the only app config | 2 | 0 |
-| AD-11 single value definition | only crm/segment/value.py names Total_Trans_Amt | 20 | 0 |
+| AD-11 single value definition | only crm/segment/value.py names Total_Trans_Amt | 21 | 0 |

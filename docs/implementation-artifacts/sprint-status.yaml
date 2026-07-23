@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-22 (3-3 done: 보류 5건 종결 — 유이 통합안 적용, 3건 4-1 인계; 443 passed. epic-2 무기한 동결)
+# last_updated: 2026-07-23 (3-4 create-story: ready-for-dev — 결론=분면 부호+접촉비율(D1), 코어 2D+risk_q 2차(D2), 동점0 반증(D3), 자체컷 가드 신설(AC6). 3-3 done/443 passed는 미커밋 working tree. epic-2 무기한 동결)
 # project: crm-targeting-lab
 # project_key: NOKEY
 # tracking_system: file-system
@@ -87,7 +87,7 @@
 #   review + per-story commit + Obsidian mirror.
 
 generated: 2026-07-20
-last_updated: 2026-07-22
+last_updated: 2026-07-23
 project: crm-targeting-lab
 project_key: NOKEY
 tracking_system: file-system
@@ -137,7 +137,20 @@ development_status:
   # 3-3 done 2026-07-22: 보류 5건 파티 종결(daria 승인) — item 3 유이 통합안 적용(x99 표현
   # 불가능화, 443 passed), item 2 구조적 동반 해소, 1/4/5는 4-1 인계(deferred-work 참조).
   3-3-budget-constrained-target-priority: done
-  3-4-sensitivity-analysis-flip-region: backlog
+  # 3-4 create-story 2026-07-23: FR14 "결론"을 실측으로 정의(D1) — 총합 순가치는 그리드
+  # 전역 양수라 안 뒤집히고, 뒤집히는 것은 분면 부호(save_first·watch robust / low_cost_keep·
+  # accept_churn fragile)와 접촉 base 비율(20~100%). 스윕은 코어 2D(성공률×비용), risk_quantile은
+  # D2 파티 종결(daria 승인 b′): risk_quantile은 계약 박힌 별도 annex(AC7) — FR14 등고선과 물리
+  # 분리, official/마트 write 0을 테스트로 단언. 3-3 인계 전제 반증(D3): 그리드 전역 동점 0건.
+  # AC 파생: AC5 동점0 고정 · AC6 find_sensitivity_selfcut_violations 대칭 가드 · AC7 annex 계약.
+  # sensitivity.py로 AD-9 캠페인 체인 완성(실스캔 3→4). 기준선 443 passed(3-3 최종은 미커밋 working tree).
+  # 3-4 dev done 2026-07-23 (review): sensitivity.py 신설로 캠페인 체인 종단 완성. sweep_sensitivity
+  # (expected_saving 재호출만·frozen dataclass)·quadrant_breakeven_rate(손익분기 이분법)·risk_quantile_annex
+  # (D2 b′ — official/디스크 write 0 테스트 단언). D1 결론=분면 부호+접촉 base 비율(총합은 안 뒤집힘).
+  # D3 인계 전제 반증: 그리드 전역 동점 0건(아핀 보존). D4: 스파인 AD-9 4단계 개정(campaign order 3→4).
+  # AC6 find_sensitivity_selfcut_violations 대칭 가드. baseline 443→464 passed(회귀 0). _bmad 이관이
+  # AD-4 가드에 걸려 red였던 것을 _SKIP_DIRS로 해소. 3-1·3-3·AD-9 인계 3건 해소.
+  3-4-sensitivity-analysis-flip-region: review
   epic-3-retrospective: optional
 
   epic-4: backlog

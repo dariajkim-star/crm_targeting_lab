@@ -26,6 +26,7 @@ RULES = (
     ("AD-9 layering", "crm/ never imports pipelines/", checkers.find_layering_violations),
     ("AD-9 campaign order", "matrix -> simulate -> priority -> sensitivity", checkers.find_campaign_order_violations),
     ("AD-12 priority self-cut", "priority.py consumes quadrant_official, never re-cuts", checkers.find_priority_selfcut_violations),
+    ("AD-12 sensitivity self-cut", "sensitivity.py consumes assign_quadrant, never re-cuts", checkers.find_sensitivity_selfcut_violations),
     ("AD-8 pipeline shape", "stages <=40 lines, main() only", checkers.find_pipeline_shape_violations),
     ("AD-1 stateless common", "crm/common holds no fitted state", checkers.find_stateful_common_violations),
     ("AD-4 config single source", "crm/config.py is the only app config", checkers.find_extra_config_files),

@@ -232,6 +232,69 @@ def test_selfcut_checker_fails_closed_on_syntax_error(tmp_path: Path) -> None:
     assert violations
 
 
+# --- AD-12: sensitivity.py must not compute its own quadrant cut (3-4) -------
+
+
+def test_sensitivity_selfcut_checker_flags_quantile(tmp_path: Path) -> None:
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "crm/campaign/sensitivity.py",
+        "def cut(s):\n    return s.quantile(0.75)\n",
+    )
+
+    violations, scanned = checkers.find_sensitivity_selfcut_violations(root)
+
+    assert scanned == 1
+    assert any("quantile" in v and "sensitivity" in v for v in violations)
+
+
+def test_sensitivity_selfcut_checker_flags_numpy_median(tmp_path: Path) -> None:
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "crm/campaign/sensitivity.py",
+        "import numpy as np\ndef cut(a):\n    return np.median(a)\n",
+    )
+
+    violations, _ = checkers.find_sensitivity_selfcut_violations(root)
+
+    assert any("median" in v for v in violations)
+
+
+def test_sensitivity_selfcut_checker_allows_consuming_assign_quadrant(tmp_path: Path) -> None:
+    """Consuming assign_quadrant (which owns the cut) is the permitted shape.
+
+    The risk_quantile annex (D2) does exactly this: it replaces the rule's
+    quantile LEVEL and hands it to matrix, whose `.quantile` call is out of this
+    module's scope. So a file that only calls `assign_quadrant(...)` and
+    `.value_counts()` must pass.
+    """
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "crm/campaign/sensitivity.py",
+        "from crm.campaign.matrix import assign_quadrant\n"
+        "def annex(s, v, rule):\n"
+        "    return assign_quadrant(s, v, rule=rule.replace(risk_quantile=0.8)).labels.value_counts()\n",
+    )
+
+    violations, scanned = checkers.find_sensitivity_selfcut_violations(root)
+
+    assert scanned == 1
+    assert violations == []
+
+
+def test_sensitivity_selfcut_checker_fails_closed_on_syntax_error(tmp_path: Path) -> None:
+    root = _clean_tree(tmp_path)
+    _write(root, "crm/campaign/sensitivity.py", "def broken(:\n")
+
+    violations, scanned = checkers.find_sensitivity_selfcut_violations(root)
+
+    assert scanned == 0
+    assert violations
+
+
 # --- AD-8 / AD-9: pipeline stage shape --------------------------------------
 
 
