@@ -43,7 +43,11 @@ import pandas as pd
 import pytest
 
 from crm.campaign.priority import (
+    BOTH_BOUND,
+    BUDGET_BELOW_ONE_CONTACT,
+    BUDGET_BOUND,
     NO_POSITIVE_CANDIDATES,
+    POSITIVITY_BOUND,
     PRIORITY_COLUMN,
     SELECTED_COLUMN,
     ZERO_BUDGET,
@@ -338,7 +342,7 @@ def test_the_budget_binds_when_it_buys_fewer_than_the_positive_candidates(distin
     )
 
     assert result.selected_count == 2
-    assert result.binding_constraint == "budget"
+    assert result.binding_constraint == BUDGET_BOUND
     assert result.selected.loc[[1, 2]].all()
     assert not result.selected.loc[[3, 4]].any()
 
@@ -355,7 +359,7 @@ def test_a_budget_large_enough_for_everyone_still_stops_at_the_last_positive(
 
     assert result.selected_count == 3
     assert result.positive_candidates == 3
-    assert result.binding_constraint == "positivity"
+    assert result.binding_constraint == POSITIVITY_BOUND
     assert not result.selected.loc[3]
 
 
@@ -424,6 +428,74 @@ def test_the_selected_column_is_named_for_the_mart(distinct):
     assert result.priority.name == PRIORITY_COLUMN
 
 
+@pytest.mark.parametrize(
+    ("cost", "k"),
+    [(0.1, 10), (1.1, 10), (3.3, 33), (0.29, 3), (2.5, 2)],
+)
+def test_a_budget_that_exactly_covers_k_contacts_buys_k(cost, k):
+    """`budget // cost` on floats floors the representation error, not the money.
+
+    Measured: `1.0 // 0.1 == 9.0`, one contact short (story 3-3 code review).
+    Built with a population large enough that positivity never binds first, so
+    the count under test is the budget conversion alone.
+    """
+    n = k + 2
+    saving, value, clientnum = _population(
+        [float(i) for i in range(n, 0, -1)], [float(i) for i in range(n)], list(range(n))
+    )
+
+    result = select_within_budget(saving, value, clientnum, budget=cost * k, cost_per_contact=cost)
+
+    assert result.affordable_contacts == k
+
+
+def test_the_selected_mask_is_plain_bool_even_for_nullable_input():
+    """Story 4-1 writes `campaign_selected` to parquet; its dtype must not depend
+    on whether the saving axis arrived as float64 or nullable Float64/Int64
+    (story 3-3 code review)."""
+    index = pd.Index([1, 2, 3], name="CLIENTNUM")
+    saving = pd.Series([10.0, 5.0, -2.0], index=index, dtype="Float64", name="expected_saving")
+    value = pd.Series([1.0, 2.0, 3.0], index=index, dtype="Float64", name="customer_value")
+    clientnum = pd.Series([1, 2, 3], index=index, dtype="Int64", name="CLIENTNUM")
+
+    result = select_within_budget(saving, value, clientnum, budget=1_000_000.0)
+
+    assert result.selected.dtype == bool
+
+
+def test_duplicated_clientnum_values_are_refused_even_with_a_unique_index():
+    """The final tie-break's uniqueness guard, unreachable through `_population`.
+
+    `_population` builds the index FROM clientnums, so a CLIENTNUM duplicate
+    always trips the index-uniqueness guard first and the clientnum guard is
+    never entered (story 3-3 code review). Here the index is unique and only the
+    CLIENTNUM column repeats.
+    """
+    index = pd.Index([10, 20, 30], name="CLIENTNUM")
+    saving = pd.Series([3.0, 2.0, 1.0], index=index, name="expected_saving")
+    value = pd.Series([1.0, 2.0, 3.0], index=index, name="customer_value")
+    clientnum = pd.Series([7, 7, 9], index=index, name="CLIENTNUM")
+
+    with pytest.raises(ValueError, match="duplicated CLIENTNUM"):
+        target_priority(saving, value, clientnum)
+
+
+def test_the_returned_selection_is_internally_consistent(distinct):
+    """The dataclass fields must agree with each other at construction.
+
+    `frozen=True` freezes the references, not the pandas objects they point at,
+    so this pins the invariant the class docstring promises - the count, total
+    and mask describe the same selection (story 3-3 code review).
+    """
+    saving, value, clientnum = distinct
+
+    result = select_within_budget(saving, value, clientnum, budget=2 * COST_PER_CONTACT)
+
+    assert int(result.selected.sum()) == result.selected_count
+    assert result.selected_total == pytest.approx(saving[result.selected].sum())
+    assert int((saving > 0).sum()) == result.positive_candidates
+
+
 # --- AC4: an empty selection must say WHY (P1 2-1) --------------------------
 
 
@@ -437,7 +509,13 @@ def test_a_zero_budget_is_reported_as_a_zero_budget_not_as_no_candidates(distinc
     assert result.positive_candidates == 3
 
 
-def test_a_budget_below_one_contact_is_reported_as_a_zero_budget(distinct):
+def test_a_budget_below_one_contact_is_distinct_from_a_zero_budget(distinct):
+    """AC4/T2: a budget of 4.99 is not zero budget - it is a third fact.
+
+    A campaign owner acts differently on "no money at all" than on "the price is
+    just above what I budgeted per contact". The earlier version of this test
+    pinned the conflation (story 3-3 code review).
+    """
     saving, value, clientnum = distinct
 
     result = select_within_budget(
@@ -445,7 +523,40 @@ def test_a_budget_below_one_contact_is_reported_as_a_zero_budget(distinct):
     )
 
     assert result.affordable_contacts == 0
+    assert result.binding_constraint == BUDGET_BELOW_ONE_CONTACT
+    assert result.binding_constraint != ZERO_BUDGET
+
+
+def test_a_zero_budget_with_no_candidates_still_reports_the_budget(distinct):
+    """AC4/T2: when both fail totally, the budget (the total blocker) wins.
+
+    An all-negative population with a zero budget must not report "no
+    candidates" and hide that there was also no money - fixing the budget is the
+    first actionable step, and only then does the positivity of the pool matter
+    (story 3-3 code review).
+    """
+    saving, value, clientnum = _population([-1.0, -2.0], [10.0, 20.0], [1, 2])
+
+    result = select_within_budget(saving, value, clientnum, budget=0.0)
+
+    assert result.positive_candidates == 0
     assert result.binding_constraint == ZERO_BUDGET
+
+
+def test_the_both_bound_label_fires_when_budget_exactly_meets_the_candidates(distinct):
+    """The `affordable == positive_candidates > 0` branch, previously untested.
+
+    A wrong label on this branch would ship green because no test constructed
+    it (story 3-3 code review).
+    """
+    saving, value, clientnum = distinct  # 3 positives, 1 negative
+
+    result = select_within_budget(
+        saving, value, clientnum, budget=3 * COST_PER_CONTACT, cost_per_contact=COST_PER_CONTACT
+    )
+
+    assert result.affordable_contacts == result.positive_candidates == 3
+    assert result.binding_constraint == BOTH_BOUND
 
 
 def test_a_population_with_no_positive_saving_is_reported_as_such():
@@ -519,28 +630,80 @@ def test_the_baseline_is_reproducible_for_a_fixed_seed(distinct):
     assert first.spread_total == second.spread_total
 
 
-def test_a_different_seed_gives_a_different_baseline(distinct):
-    """If this passed by accident the seed would not be reaching the sampler."""
-    saving, _, _ = distinct
+@pytest.fixture
+def wide_population():
+    """50 distinct savings - a sampling space big enough that a probabilistic
+    assertion below cannot flake in practice (story 3-3 code review flagged the
+    original 4-row / 6-outcome fixtures as flaky)."""
+    n = 50
+    return _population(
+        [float(i) for i in range(1, n + 1)],
+        [float(i) for i in range(n)],
+        list(range(n)),
+    )
 
-    first = random_baseline(saving, n_contacts=2, draws=8, seed=RANDOM_SEED)
-    second = random_baseline(saving, n_contacts=2, draws=8, seed=RANDOM_SEED + 1)
 
-    assert first.mean_total != second.mean_total
+def test_the_seed_reaches_the_sampler(wide_population):
+    """If the seed were ignored, every baseline below would be identical.
+
+    Asserted as "not all equal" over several seeds rather than a strict A != B
+    on two draws: with C(50, 10) ~ 1e10 subsets an accidental full collision is
+    astronomically unlikely, so this cannot flake the way a two-sample strict
+    inequality on a 6-outcome space could.
+    """
+    saving, _, _ = wide_population
+
+    means = {random_baseline(saving, n_contacts=10, draws=8, seed=s).mean_total for s in range(6)}
+
+    assert len(means) > 1
 
 
-def test_more_draws_shrink_the_spread_of_the_mean(distinct):
+def test_more_draws_shrink_the_spread_of_the_mean(wide_population):
     """Trap 3: the point of averaging is that ONE draw is not a fact.
 
-    Compares the spread of the per-draw totals, which is what the report has to
-    print alongside the multiple.
+    std of a sample mean falls as ~1/sqrt(draws), so 512 draws against 2 gives a
+    ~16x separation - far wider than the estimation noise over 40 seeds, so the
+    inequality holds with an enormous margin rather than in expectation only.
     """
-    saving, _, _ = distinct
+    saving, _, _ = wide_population
 
-    few = [random_baseline(saving, n_contacts=2, draws=4, seed=s).mean_total for s in range(20)]
-    many = [random_baseline(saving, n_contacts=2, draws=256, seed=s).mean_total for s in range(20)]
+    few = [random_baseline(saving, n_contacts=10, draws=2, seed=s).mean_total for s in range(40)]
+    many = [random_baseline(saving, n_contacts=10, draws=512, seed=s).mean_total for s in range(40)]
 
     assert np.std(many) < np.std(few)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"n_contacts": 2.5, "draws": 3}, "n_contacts"),
+        ({"n_contacts": True, "draws": 3}, "n_contacts"),
+        ({"n_contacts": 2, "draws": 3.7}, "draws"),
+        ({"n_contacts": 2, "draws": 3, "seed": 1.0}, "seed"),
+        ({"n_contacts": 2, "draws": 3, "seed": -1}, "seed"),
+    ],
+)
+def test_non_integer_sampling_arguments_are_refused_by_name(distinct, kwargs, match):
+    """`0 <= 2.5 <= n` and `3.7 > 0` pass the range checks; the failure would
+    otherwise surface from numpy naming neither the argument nor the function.
+    `n_contacts=True` is the sharp case - bool is an int subtype (story 3-3 code
+    review)."""
+    saving, _, _ = distinct
+
+    with pytest.raises(ValueError, match=match):
+        random_baseline(saving, **kwargs)
+
+
+def test_the_full_population_baseline_reports_a_structural_zero_spread(distinct):
+    """Sampling everyone is a permutation: every draw sums identically, so the
+    spread is a structural 0, not a measured one. Short-circuited so it does not
+    burn `draws` identical permutations (story 3-3 code review)."""
+    saving, _, _ = distinct
+
+    baseline = random_baseline(saving, n_contacts=len(saving), draws=999, seed=RANDOM_SEED)
+
+    assert baseline.spread_total == 0.0
+    assert baseline.mean_total == pytest.approx(saving.sum())
 
 
 def test_the_baseline_records_how_many_draws_produced_it(distinct):
@@ -569,21 +732,49 @@ def test_targeting_beats_random_on_a_population_with_spread(distinct):
     result = select_within_budget(saving, value, clientnum, budget=2 * COST_PER_CONTACT)
     baseline = random_baseline(saving, n_contacts=result.selected_count, draws=256, seed=RANDOM_SEED)
 
-    multiple = multiple_over_random(result.selected_total, baseline)
+    multiple = multiple_over_random(result, baseline)
 
     assert multiple > 1.0
+
+
+def test_a_baseline_of_the_wrong_contact_count_is_refused(distinct):
+    """The mismatch that used to print x99 silently (story 3-3 code review).
+
+    The function now takes the two result objects and compares their contact
+    counts itself, so a selection of one size cannot be divided by a baseline
+    of another - the earlier bare-float signature is no longer expressible.
+    """
+    saving, value, clientnum = distinct
+    result = select_within_budget(saving, value, clientnum, budget=2 * COST_PER_CONTACT)
+    mismatched = random_baseline(saving, n_contacts=1, draws=8, seed=RANDOM_SEED)
+
+    with pytest.raises(ValueError, match="different"):
+        multiple_over_random(result, mismatched)
+
+
+def test_a_bare_float_numerator_is_no_longer_accepted(distinct):
+    """The old call shape must fail loudly, not coerce."""
+    saving, value, clientnum = distinct
+    result = select_within_budget(saving, value, clientnum, budget=2 * COST_PER_CONTACT)
+    baseline = random_baseline(saving, n_contacts=result.selected_count, draws=8, seed=RANDOM_SEED)
+
+    with pytest.raises(ValueError, match="BudgetSelection"):
+        multiple_over_random(result.selected_total, baseline)
 
 
 def test_the_multiple_is_refused_when_the_baseline_is_not_positive():
     """A ratio against a zero or negative denominator is not a multiple.
 
-    Reporting -3.2x as "3.2 times better" is the failure this guard prevents.
+    An all-negative population selects nobody, its size-0 baseline sums to a
+    structural 0.0, and a 0/0 read as "x1.0 better" would be the lie this
+    refuses.
     """
     saving, value, clientnum = _population([-1.0, -2.0, -3.0], [10.0, 20.0, 30.0], [1, 2, 3])
-    baseline = random_baseline(saving, n_contacts=2, draws=8, seed=RANDOM_SEED)
+    result = select_within_budget(saving, value, clientnum, budget=1_000_000.0)
+    baseline = random_baseline(saving, n_contacts=result.selected_count, draws=8, seed=RANDOM_SEED)
 
-    with pytest.raises(ValueError, match="multiple"):
-        multiple_over_random(-1.0, baseline)
+    with pytest.raises(ValueError, match="positive baseline"):
+        multiple_over_random(result, baseline)
 
 
 def test_asking_for_more_contacts_than_customers_is_refused(distinct):

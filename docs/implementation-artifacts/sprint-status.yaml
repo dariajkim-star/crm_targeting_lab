@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-22 (3-3 dev-story 완료 -> review; 376 -> 421 passed, 회귀 0)
+# last_updated: 2026-07-22 (3-3 done: 보류 5건 종결 — 유이 통합안 적용, 3건 4-1 인계; 443 passed. epic-2 무기한 동결)
 # project: crm-targeting-lab
 # project_key: NOKEY
 # tracking_system: file-system
@@ -109,6 +109,10 @@ development_status:
   1-7-shap-drivers-retention-actions: done
   epic-1-retrospective: done
 
+  # epic-2 무기한 동결 2026-07-22 (daria 결정): painpoint 재정의(재무 워싱 스크리너 —
+  # crm은 방법론 리허설) 후 파티 판정 — BG/NBD LTV 데모는 painpoint와 겹치는 원자가 0이고
+  # 리허설 가치도 소진(E1·E3가 방법론 근육을 이미 만듦). 상태 스키마 유지를 위해 backlog로
+  # 두되 이 주석이 동결 선언이다. 해동하려면 painpoint 관점의 새 근거가 필요하다.
   epic-2: backlog
   2-1-transaction-cleaning-customer-summary: backlog
   2-2-bgnbd-gamma-gamma-ltv: backlog
@@ -127,7 +131,12 @@ development_status:
   # 3-3 create-story 2026-07-22: 3-2 인계 미결 2건을 스토리가 결정으로 닫았다(D1 음수 처리 /
   # D2 비음수 검사 책임). 사전조사가 두 parquet 행 오정렬을 실제로 밟았고(총합 +37%, 모든 가드 통과)
   # 함정 4로 기록했다 - dev는 CLIENTNUM 조인 필수.
-  3-3-budget-constrained-target-priority: review
+  # 3-3 코드리뷰 2026-07-22: 3레이어 병렬. Auditor 수치 전건 재현(오기 0). patch 20건 적용
+  # (441 passed), API 변경 5건은 파티 논의 후 결정 — D1 CLIENTNUM 계약 좁히기 + multiple_over_random/
+  # random_baseline 시그니처 3종 + budget=0 메시지. 그 5건 해소 전까지 in-progress.
+  # 3-3 done 2026-07-22: 보류 5건 파티 종결(daria 승인) — item 3 유이 통합안 적용(x99 표현
+  # 불가능화, 443 passed), item 2 구조적 동반 해소, 1/4/5는 4-1 인계(deferred-work 참조).
+  3-3-budget-constrained-target-priority: done
   3-4-sensitivity-analysis-flip-region: backlog
   epic-3-retrospective: optional
 

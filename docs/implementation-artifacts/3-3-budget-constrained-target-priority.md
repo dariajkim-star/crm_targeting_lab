@@ -6,7 +6,7 @@ artifact_id: 9e1a4d71800f
 
 # Story 3.3: 예산 제약 타겟 우선순위
 
-Status: review
+Status: done
 
 ## Story
 
@@ -101,7 +101,9 @@ dense rank 결과를 다르게 만든다"*고 적었다. **실측상 양수 8,58
 - [x] **T1** `crm/campaign/priority.py::target_priority()` 구현 (AC1·AC6)
   - [x] 순수 함수. **`expected_saving()`을 소비**하거나 그 출력 Series를 받는다 — 산식 재구현 금지(AD-9)
   - [x] 정렬 키 3단: `expected_saving` 내림차순 → `customer_value` 내림차순 → `CLIENTNUM` 오름차순
-  - [x] **dense rank**(`method="dense"`), 1이 최우선
+  - [x] **전순서상의 위치로 순위 부여**, 1이 최우선 — CLIENTNUM 유일성 하에서 dense와 동치라
+        구현은 `np.lexsort` + 위치 배정을 쓴다(`rank(method="dense")` 호출이 아니다). 초판이 이 칸에
+        `method="dense"`라 적은 것은 코드와 불일치였고 코드리뷰가 정정했다 — 등가성 논거는 Completion Notes
   - [x] 값 축 **비음수 fail-fast**(D2). 거부 사유를 메시지가 설명할 것
   - [x] `crm.campaign.sensitivity` import 금지(AD-9 방향)
   - [x] **자체 분면 컷 금지** — 분면이 필요하면 `quadrant_official`을 소비만(AD-12)
@@ -159,31 +161,31 @@ dense rank 결과를 다르게 만든다"*고 적었다. **실측상 양수 8,58
 **honesty 주장 3건 중 2건 감사 통과**: M5 등가 변이 논거 **SOUND**(Blind가 NaN·−0.0·int dtype으로
 깨보려다 실패, Auditor가 논증을 독립 재구성), AD-12 dense 무력성 **SOUND**. 세 번째(부분 가드)는 **실패** — D1.
 
-- [ ] [Review][Decision] **`CLIENTNUM` 대조 가드가 함정 4를 못 잡는다 — 마트 형태에서조차** — 내가 이 가드를 "4-1에서만 실효가 있다"고 `deferred-work.md`에 적었는데 **Auditor가 그 진술을 반증했다**. 실측 2종: (A) `RangeIndex` 위치 결합 → 무예외, 합계 1,994,740.8 (B) **CLIENTNUM 인덱스로 재조립한 4-1 마트 형태** + 같은 프레임의 `clientnum` → **여전히 무예외, 합계 1,994,740.8**. 이유: 함정 4가 오염시키는 것은 **절감액 축**인데 그 축은 정체성을 안 들고 다닌다. 가드가 잡는 것은 "잘못 라벨된 CLIENTNUM **컬럼**"이지 "어긋난 절감액 축"이 아니다. 리포트 §⑦과 `deferred-work.md`가 **둘 다 보호를 과장**한다. 선택지: (a) 문서만 정정하고 "이 계층에 기계적 보호는 없다"를 명시한 뒤 4-1에 넘김 (b) 세 축 모두 CLIENTNUM 인덱스를 요구하도록 계약을 좁힘 — 호출부 계약 변경 (c) 둘 다 [crm/campaign/priority.py::_validate_alignment]
-- [ ] [Review][Decision] **AC3에 커밋된 검증이 없다** — AC3은 "`quadrant_official` 컬럼을 소비함이 **확인된다**"인데 유일한 증거가 리포트 §④ 산문과 **gitignore된** `scratch/run_priority_3_3.py`다. `test_priority.py`에 분면 단언 0건이고, 내가 넓힌 AD-9 가드는 `priority.py`가 `matrix.py`를 import하는 것을 **명시적으로 허용**한다(체인상 앞 단계라 정상). "자체 컷 금지"는 **오늘의 파일에 대해 참일 뿐 강제되지 않는다**. 선택지: (a) `priority.py`가 분위수·컷 호출을 갖지 않음을 구조 테스트로 고정 (b) AC3 검증을 4-1로 넘기고 3-3에서는 **미충족 표기** (c) 분면을 실제 소비하는 얇은 함수를 3-3에 두고 테스트
-- [ ] [Review][Patch] **`multiple_over_random`이 분모만 검사하고 분자를 안 본다 — docstring이 막는다고 선언한 값이 통과** — `multiple_over_random(-320.0, 평균100)` → **−3.2 조용히 반환**. **내 테스트가 그 구멍을 실증한다** — `test_the_multiple_is_refused_when_the_baseline_is_not_positive`가 분자에 `-1.0`을 넣고 통과한 이유는 분모가 음수였기 때문. NaN·inf도 통과 [crm/campaign/priority.py]
-- [ ] [Review][Patch] **기준선과 비교 대상 선택을 묶는 것이 없다 — 헤드라인 수치가 조용히 어긋난다** — 실측: 8,587명 선택을 100명 기준선과 비교 → **x99**, 전 인원 합계를 2명 기준선과 → **x2.54**. 무예외·게재 가능·틀림. FR13 산출물 전체가 이 배수인데 한 줄 assert가 없다 [crm/campaign/priority.py]
-- [ ] [Review][Patch] **`random_baseline`이 모집단 동일성을 검증하지 않는다** — `target_priority`에서는 길이·인덱스·dtype·중복까지 잡고 **분모를 만드는 함수에서 규율을 놓았다**. 걸러진 Series를 풀로 넘기면 유효한 기준선·유효한 배수·틀린 분모 [crm/campaign/priority.py]
-- [ ] [Review][Patch] **`int(budget // cost)`가 돈이 아니라 표현 오차를 floor한다 — 1명을 덜 산다** — 실측 `cost 0.1 budget 1.0 → 9`(10이어야) · `cost 1.1 budget 11.0 → 9` · `cost 3.3 budget 108.9 → 32`. 1명분 예산이 남았는데 `binding_constraint='budget'`으로 보고. 방향이 일정하지 않아 가드로만 막힌다. 현 `COST_GRID`가 이진 정확값이라 잠복이나 **3-4가 비이진 비용을 스윕하면 즉시 발동**. 비정수 cost 테스트 0건 [crm/campaign/priority.py]
-- [ ] [Review][Patch] **미세 `cost_per_contact`에서 `OverflowError` — 문서화된 `ValueError` 계약 위반** — `budget=1.0, cost=5e-324` → `OverflowError`. 두 피연산자의 유한성은 보되 **몫의 유한성을 안 본다** [crm/campaign/priority.py]
-- [ ] [Review][Patch] **`binding_constraint`가 세 사실을 두 라벨로 뭉갠다 — T2가 "각각"을 요구한 지점** — ①`budget=4.99, cost=5.0` → `ZERO_BUDGET`(0원과 "단가 미만"은 다른 사실). 내 테스트가 이 혼동을 **고정**해 버렸다 ②전원 음수 + `budget=0` → `no_positive_candidates`가 먼저 걸려 **예산 0이라는 사실이 사라진다** [crm/campaign/priority.py]
-- [ ] [Review][Patch] **커밋된 코드가 같은 커밋의 리포트가 폐기한 수치를 들고 있다 (4곳)** — ①`multiple_over_random` docstring의 *"x1.00까지 단조 감소"* — **D1 정책은 x1.18 바닥**이고 x1.00은 내가 기각한 정책의 값. **쓰이지 않은 코드를 묘사하는 docstring** ②`RandomBaseline`·`random_baseline`·`config.py`의 *"x7.76~x14.09"* — 구현이 내는 값은 **x8.35~x13.82**이고 Auditor는 **어떤 자연스러운 seed 범위에서도 재현 실패**. 프로젝트 서명에 정면으로 걸린다 [crm/campaign/priority.py, crm/config.py]
-- [ ] [Review][Patch] **`BOTH_BOUND`가 어떤 테스트도 안 거치고, 상수 대신 문자열 리터럴로 비교한다** — `affordable == positive > 0`을 만드는 테스트가 없어 **그 분기 라벨이 틀려도 초록으로 나간다** [tests/campaign/test_priority.py]
-- [ ] [Review][Patch] **`clientnum.is_unique` 가드가 테스트 헬퍼 구조상 도달 불가** — `_population()`이 인덱스를 `clientnums`에서 만들어 CLIENTNUM 중복이 **항상 인덱스 가드에 먼저 걸린다**. 테스트가 `"duplicat"`만 매칭해 **어느 쪽이 발동했는지 구분도 못 한다** [tests/campaign/test_priority.py]
-- [ ] [Review][Patch] **frozen dataclass가 살아있는 pandas 객체를 들어 거짓 불변성을 준다** — `result.priority.iloc[0] = 999`가 성공하고 이후 `selected_count`·`selected_total`·`binding_constraint`가 **서로 모순**한다. 클래스 docstring이 "함께 다닌다"로 막겠다던 함정. 내부 정합 단언 0건 [crm/campaign/priority.py]
-- [ ] [Review][Patch] **`test_a_different_seed_gives_a_different_baseline`이 잠재 플레이크** — 4명·`n_contacts=2`면 **구별되는 쌍 합이 6개뿐**인데 8회 평균 둘의 **엄격 부등호**를 단언한다 [tests/campaign/test_priority.py]
-- [ ] [Review][Patch] **`test_more_draws_shrink_the_spread_of_the_mean`에 허용오차가 없다** — 6결과 공간에서 **기댓값으로 참**이지 구성상 참이 아니다. "평균내기가 작동한다"와 "numpy RNG가 정상이다"를 구분 못 한다 [tests/campaign/test_priority.py]
-- [ ] [Review][Patch] **`n_contacts`·`draws`·`seed`가 범위만 검사되고 타입 미검사** — `n_contacts=2.5`·`n_contacts=True`(bool은 int 하위형)·`draws=3.7`·`seed=-1`이 **인자도 함수도 안 알려주는** numpy 날 에러로 터진다. `_require_series`가 막으려던 실패 양식 [crm/campaign/priority.py]
-- [ ] [Review][Patch] **전 인원 추출 시 `spread_total=0.0`이 구조적 0인데 측정값처럼 보고된다** — `replace=False`가 `size == len`이면 순열이라 모든 draw가 같은 합. **진짜 좁은 추정과 구분 불가능한 0폭**을 보고하며 200 × 10,127 순열을 태운다 [crm/campaign/priority.py]
-- [ ] [Review][Patch] **정당한 `budget=0` 경로가 엉뚱한 메시지로 끝난다** — 실제 원인은 접촉 인원 0인데 *"기준선이 양수여야 한다"*로 거부. `n_contacts=0`을 허용해 놓고 두 함수가 **빈 캠페인의 합법성에 대해 다른 말을 한다** [crm/campaign/priority.py]
-- [ ] [Review][Patch] **`selected` 마스크 dtype이 입력 dtype에 따라 달라진다** — nullable 입력이면 `BooleanDtype`, 아니면 `bool`. `target_priority` 반환은 dtype이 못박혀 있는데 `selected`는 없어 **4-1 parquet 타입이 상류에 따라 갈린다** [crm/campaign/priority.py]
-- [ ] [Review][Patch] **Debug Log의 M7/M8 라벨이 실제 심은 변이와 다르다** — 실제로 심은 것은 **타이브레이크 체인을 버리고 절감액만으로 랭크**하는 변이다. 리터럴 `dense→min/first`는 죽지 않으며 테스트 파일이 그렇게 명시한다. **체크박스만 읽으면 AD-12 dense 조항이 변이 커버됐다고 결론내게 된다** [3-3-...md Debug Log]
-- [ ] [Review][Patch] **T1 체크박스가 코드에 없는 `method="dense"`를 주장한다** — 구현은 `np.lexsort` + 위치 배정. 등가성 논거는 건전하나 **정정이 T4에만 있고 T1에는 없다** [3-3-...md T1]
-- [ ] [Review][Patch] **T4의 "선택은 8,587명에서 멈춤"을 커밋된 테스트가 검증하지 않는다** — 45건 **전부 합성**이고 최대 픽스처 4행. 8,587 정지는 gitignore된 스크립트에서만 관측된다 [3-3-...md T4]
-- [ ] [Review][Patch] **리포트 §① 8,587·10,127행의 "접촉 인원" 라벨이 틀렸다** — 10,127행이 접촉하는 것은 **8,587명**이다(윗행과 값이 같은 이유). **열 제목이 그 행에 대해 문자 그대로 거짓** [priority-report-3-3.md §①]
-- [ ] [Review][Patch] **리포트의 "커밋되지 않은 것은 호출 순서 5줄뿐"이 재생성에 불충분** — §②의 반사실 열, §③의 50 seed 스윕, §④의 분면×순위 교차표가 빠졌다. Auditor가 셋 다 재구성해야 했다 — 3-2 F7 완화 문구가 **여전히 과잉 주장** [priority-report-3-3.md 머리말]
-- [ ] [Review][Patch] **M9/M10의 15.0 vs 13.0을 커밋된 아티팩트로 감사할 수 없다** — `distinct` 픽스처 양수 합은 60.0이라 대응하지 않고, 그 수치를 내는 픽스처는 **커밋된 적이 없다**. 4곳에서 인용됨 [crm/campaign/priority.py, tests, Debug Log, deferred-work.md]
-- [ ] [Review][Patch] **`spread_total`이 모집단 표준편차(ddof=0)인데 "산포(σ)"로 실린다** — 표본 평균의 감사 가능한 폭으로 제시되면서 규약을 어디에도 안 적었다 [crm/campaign/priority.py]
+- [x] [Review][Decision] **`CLIENTNUM` 대조 가드가 함정 4를 못 잡는다 — 마트 형태에서조차** — 내가 이 가드를 "4-1에서만 실효가 있다"고 `deferred-work.md`에 적었는데 **Auditor가 그 진술을 반증했다**. 실측 2종: (A) `RangeIndex` 위치 결합 → 무예외, 합계 1,994,740.8 (B) **CLIENTNUM 인덱스로 재조립한 4-1 마트 형태** + 같은 프레임의 `clientnum` → **여전히 무예외, 합계 1,994,740.8**. 이유: 함정 4가 오염시키는 것은 **절감액 축**인데 그 축은 정체성을 안 들고 다닌다. 가드가 잡는 것은 "잘못 라벨된 CLIENTNUM **컬럼**"이지 "어긋난 절감액 축"이 아니다. 리포트 §⑦과 `deferred-work.md`가 **둘 다 보호를 과장**한다. 선택지: (a) 문서만 정정하고 "이 계층에 기계적 보호는 없다"를 명시한 뒤 4-1에 넘김 (b) 세 축 모두 CLIENTNUM 인덱스를 요구하도록 계약을 좁힘 — 호출부 계약 변경 (c) 둘 다 [crm/campaign/priority.py::_validate_alignment] — **[파티 결정→defer(4-1)] 문서 정정은 완료. 계약 좁히기(세 축 CLIENTNUM 인덱스)는 인덱스가 실제로 세팅되는 4-1에서 수행 — 여기서 좁히면 done인 3-2가 비순응이 된다(레아·다나 안, daria 승인 2026-07-22).**
+- [x] [Review][Decision] **AC3에 커밋된 검증이 없다** — AC3은 "`quadrant_official` 컬럼을 소비함이 **확인된다**"인데 유일한 증거가 리포트 §④ 산문과 **gitignore된** `scratch/run_priority_3_3.py`다. `test_priority.py`에 분면 단언 0건이고, 내가 넓힌 AD-9 가드는 `priority.py`가 `matrix.py`를 import하는 것을 **명시적으로 허용**한다(체인상 앞 단계라 정상). "자체 컷 금지"는 **오늘의 파일에 대해 참일 뿐 강제되지 않는다**. 선택지: (a) `priority.py`가 분위수·컷 호출을 갖지 않음을 구조 테스트로 고정 (b) AC3 검증을 4-1로 넘기고 3-3에서는 **미충족 표기** (c) 분면을 실제 소비하는 얇은 함수를 3-3에 두고 테스트 ✅적용
+- [x] [Review][Patch] **`multiple_over_random`이 분모만 검사하고 분자를 안 본다 — docstring이 막는다고 선언한 값이 통과** — `multiple_over_random(-320.0, 평균100)` → **−3.2 조용히 반환**. **내 테스트가 그 구멍을 실증한다** — `test_the_multiple_is_refused_when_the_baseline_is_not_positive`가 분자에 `-1.0`을 넣고 통과한 이유는 분모가 음수였기 때문. NaN·inf도 통과 [crm/campaign/priority.py] — **✅적용(구조적 해소): 유이 통합안으로 분자가 `selection.selected_total`이 됐다 — 검증된 축 + 양수 전용 선택에서 구성되므로 유한·비음수가 구조적으로 보장되고, 임의 float을 넣는 호출 자체가 거부된다(`test_a_bare_float_numerator_is_no_longer_accepted`).**
+- [x] [Review][Patch] **기준선과 비교 대상 선택을 묶는 것이 없다 — 헤드라인 수치가 조용히 어긋난다** — 실측: 8,587명 선택을 100명 기준선과 비교 → **x99**, 전 인원 합계를 2명 기준선과 → **x2.54**. 무예외·게재 가능·틀림. FR13 산출물 전체가 이 배수인데 한 줄 assert가 없다 [crm/campaign/priority.py] — **✅적용(유이 통합안, daria 승인): `multiple_over_random(selection: BudgetSelection, baseline: RandomBaseline)`로 시그니처 변경. 함수가 두 결과 객체에서 분자·분모를 직접 읽고 `n_contacts != selected_count`를 거부 — x99가 호출부에서 표현 불가능해졌다(`test_a_baseline_of_the_wrong_contact_count_is_refused`).**
+- [x] [Review][Patch] **`random_baseline`이 모집단 동일성을 검증하지 않는다** — `target_priority`에서는 길이·인덱스·dtype·중복까지 잡고 **분모를 만드는 함수에서 규율을 놓았다**. 걸러진 Series를 풀로 넘기면 유효한 기준선·유효한 배수·틀린 분모 [crm/campaign/priority.py] — **[파티 결정→defer(4-1)] 통합안이 배수 경로의 오용은 닫았으나 `random_baseline` 자체는 여전히 맨 Series를 받는다. 모집단 정체성 검증은 마트가 단일 조인 지점이 되는 4-1에서 함정 4 계약 좁히기와 함께 처리(daria 승인 2026-07-22).**
+- [x] [Review][Patch] **`int(budget // cost)`가 돈이 아니라 표현 오차를 floor한다 — 1명을 덜 산다** — 실측 `cost 0.1 budget 1.0 → 9`(10이어야) · `cost 1.1 budget 11.0 → 9` · `cost 3.3 budget 108.9 → 32`. 1명분 예산이 남았는데 `binding_constraint='budget'`으로 보고. 방향이 일정하지 않아 가드로만 막힌다. 현 `COST_GRID`가 이진 정확값이라 잠복이나 **3-4가 비이진 비용을 스윕하면 즉시 발동**. 비정수 cost 테스트 0건 [crm/campaign/priority.py] ✅적용
+- [x] [Review][Patch] **미세 `cost_per_contact`에서 `OverflowError` — 문서화된 `ValueError` 계약 위반** — `budget=1.0, cost=5e-324` → `OverflowError`. 두 피연산자의 유한성은 보되 **몫의 유한성을 안 본다** [crm/campaign/priority.py] ✅적용
+- [x] [Review][Patch] **`binding_constraint`가 세 사실을 두 라벨로 뭉갠다 — T2가 "각각"을 요구한 지점** — ①`budget=4.99, cost=5.0` → `ZERO_BUDGET`(0원과 "단가 미만"은 다른 사실). 내 테스트가 이 혼동을 **고정**해 버렸다 ②전원 음수 + `budget=0` → `no_positive_candidates`가 먼저 걸려 **예산 0이라는 사실이 사라진다** [crm/campaign/priority.py] ✅적용
+- [x] [Review][Patch] **커밋된 코드가 같은 커밋의 리포트가 폐기한 수치를 들고 있다 (4곳)** — ①`multiple_over_random` docstring의 *"x1.00까지 단조 감소"* — **D1 정책은 x1.18 바닥**이고 x1.00은 내가 기각한 정책의 값. **쓰이지 않은 코드를 묘사하는 docstring** ②`RandomBaseline`·`random_baseline`·`config.py`의 *"x7.76~x14.09"* — 구현이 내는 값은 **x8.35~x13.82**이고 Auditor는 **어떤 자연스러운 seed 범위에서도 재현 실패**. 프로젝트 서명에 정면으로 걸린다 [crm/campaign/priority.py, crm/config.py] ✅적용
+- [x] [Review][Patch] **`BOTH_BOUND`가 어떤 테스트도 안 거치고, 상수 대신 문자열 리터럴로 비교한다** — `affordable == positive > 0`을 만드는 테스트가 없어 **그 분기 라벨이 틀려도 초록으로 나간다** [tests/campaign/test_priority.py] ✅적용
+- [x] [Review][Patch] **`clientnum.is_unique` 가드가 테스트 헬퍼 구조상 도달 불가** — `_population()`이 인덱스를 `clientnums`에서 만들어 CLIENTNUM 중복이 **항상 인덱스 가드에 먼저 걸린다**. 테스트가 `"duplicat"`만 매칭해 **어느 쪽이 발동했는지 구분도 못 한다** [tests/campaign/test_priority.py] ✅적용
+- [x] [Review][Patch] **frozen dataclass가 살아있는 pandas 객체를 들어 거짓 불변성을 준다** — `result.priority.iloc[0] = 999`가 성공하고 이후 `selected_count`·`selected_total`·`binding_constraint`가 **서로 모순**한다. 클래스 docstring이 "함께 다닌다"로 막겠다던 함정. 내부 정합 단언 0건 [crm/campaign/priority.py] ✅적용
+- [x] [Review][Patch] **`test_a_different_seed_gives_a_different_baseline`이 잠재 플레이크** — 4명·`n_contacts=2`면 **구별되는 쌍 합이 6개뿐**인데 8회 평균 둘의 **엄격 부등호**를 단언한다 [tests/campaign/test_priority.py] ✅적용
+- [x] [Review][Patch] **`test_more_draws_shrink_the_spread_of_the_mean`에 허용오차가 없다** — 6결과 공간에서 **기댓값으로 참**이지 구성상 참이 아니다. "평균내기가 작동한다"와 "numpy RNG가 정상이다"를 구분 못 한다 [tests/campaign/test_priority.py] ✅적용
+- [x] [Review][Patch] **`n_contacts`·`draws`·`seed`가 범위만 검사되고 타입 미검사** — `n_contacts=2.5`·`n_contacts=True`(bool은 int 하위형)·`draws=3.7`·`seed=-1`이 **인자도 함수도 안 알려주는** numpy 날 에러로 터진다. `_require_series`가 막으려던 실패 양식 [crm/campaign/priority.py] ✅적용
+- [x] [Review][Patch] **전 인원 추출 시 `spread_total=0.0`이 구조적 0인데 측정값처럼 보고된다** — `replace=False`가 `size == len`이면 순열이라 모든 draw가 같은 합. **진짜 좁은 추정과 구분 불가능한 0폭**을 보고하며 200 × 10,127 순열을 태운다 [crm/campaign/priority.py] ✅적용
+- [x] [Review][Patch] **정당한 `budget=0` 경로가 엉뚱한 메시지로 끝난다** — 실제 원인은 접촉 인원 0인데 *"기준선이 양수여야 한다"*로 거부. `n_contacts=0`을 허용해 놓고 두 함수가 **빈 캠페인의 합법성에 대해 다른 말을 한다** [crm/campaign/priority.py] — **[파티 결정→defer(4-1)] 만장일치 nit. `budget=0` 경로의 메시지 정합은 4-1에서 배제/빈 캠페인 UX를 설계할 때 함께(daria 승인 2026-07-22).**
+- [x] [Review][Patch] **`selected` 마스크 dtype이 입력 dtype에 따라 달라진다** — nullable 입력이면 `BooleanDtype`, 아니면 `bool`. `target_priority` 반환은 dtype이 못박혀 있는데 `selected`는 없어 **4-1 parquet 타입이 상류에 따라 갈린다** [crm/campaign/priority.py] ✅적용
+- [x] [Review][Patch] **Debug Log의 M7/M8 라벨이 실제 심은 변이와 다르다** — 실제로 심은 것은 **타이브레이크 체인을 버리고 절감액만으로 랭크**하는 변이다. 리터럴 `dense→min/first`는 죽지 않으며 테스트 파일이 그렇게 명시한다. **체크박스만 읽으면 AD-12 dense 조항이 변이 커버됐다고 결론내게 된다** [3-3-...md Debug Log] ✅적용
+- [x] [Review][Patch] **T1 체크박스가 코드에 없는 `method="dense"`를 주장한다** — 구현은 `np.lexsort` + 위치 배정. 등가성 논거는 건전하나 **정정이 T4에만 있고 T1에는 없다** [3-3-...md T1] ✅적용
+- [x] [Review][Patch] **T4의 "선택은 8,587명에서 멈춤"을 커밋된 테스트가 검증하지 않는다** — 45건 **전부 합성**이고 최대 픽스처 4행. 8,587 정지는 gitignore된 스크립트에서만 관측된다 [3-3-...md T4] ✅적용
+- [x] [Review][Patch] **리포트 §① 8,587·10,127행의 "접촉 인원" 라벨이 틀렸다** — 10,127행이 접촉하는 것은 **8,587명**이다(윗행과 값이 같은 이유). **열 제목이 그 행에 대해 문자 그대로 거짓** [priority-report-3-3.md §①] ✅적용
+- [x] [Review][Patch] **리포트의 "커밋되지 않은 것은 호출 순서 5줄뿐"이 재생성에 불충분** — §②의 반사실 열, §③의 50 seed 스윕, §④의 분면×순위 교차표가 빠졌다. Auditor가 셋 다 재구성해야 했다 — 3-2 F7 완화 문구가 **여전히 과잉 주장** [priority-report-3-3.md 머리말] ✅적용
+- [x] [Review][Patch] **M9/M10의 15.0 vs 13.0을 커밋된 아티팩트로 감사할 수 없다** — `distinct` 픽스처 양수 합은 60.0이라 대응하지 않고, 그 수치를 내는 픽스처는 **커밋된 적이 없다**. 4곳에서 인용됨 [crm/campaign/priority.py, tests, Debug Log, deferred-work.md] ✅적용
+- [x] [Review][Patch] **`spread_total`이 모집단 표준편차(ddof=0)인데 "산포(σ)"로 실린다** — 표본 평균의 감사 가능한 폭으로 제시되면서 규약을 어디에도 안 적었다 [crm/campaign/priority.py] ✅적용
 - [x] [Review][Defer] **AD-12의 "정의를 스키마 문서에 고정한다"가 미충족** [ARCHITECTURE-SPINE.md AD-12] — deferred, `marts/` 어디에도 `target_priority`·`campaign_selected`를 명명한 스키마 문서가 없다(grep 0건). 4-1 소관이나 AD-12는 정의 소유자를 구속한다
 - [x] [Review][Defer] **`_validate_axis` 반환값을 세 호출부가 버리고 같은 Series를 다시 변환한다** [crm/campaign/priority.py] — deferred, 현재는 무해하나 **검증된 배열과 정렬되는 배열이 다른 객체**라 변환에 인자가 붙는 순간 갈라진다
 
@@ -414,11 +416,18 @@ M3 value 키 오름차순            -> KILLED
 M4 clientnum 키 내림차순        -> KILLED
 M5 양수 마스크 제거             -> SURVIVED  <- 등가 변이
 M6 예산 컷 제거                 -> KILLED
-M7 절감액만 method="min" 랭크   -> KILLED
-M8 절감액만 method="first" 랭크 -> KILLED
+M7 타이브레이크 체인 버리고 절감액만 method="min"   -> KILLED
+M8 타이브레이크 체인 버리고 절감액만 method="first" -> KILLED
 M9  min() 제거 + 마스크 유지    -> KILLED
 M10 min() 제거 + 마스크 제거    -> KILLED
 ```
+
+**M7/M8 라벨 주의(코드리뷰 정정)**: 실제 심은 변이는 "타이브레이크 체인을 버리고 절감액만으로
+랭크"다. **리터럴 `dense→min/first` 변이는 죽지 않는다** — CLIENTNUM 유일성 하에서 복합 키에
+동점이 없어 `dense`·`min`·`first`가 같은 `1..n`을 내기 때문이다(테스트 파일이 그렇게 명시한다).
+초판 Debug Log가 이 둘을 `method="min"/"first"`로 적어 **AD-12의 dense 조항이 변이 커버된 것처럼**
+읽히게 했다. M9/M10의 15.0 vs 13.0은 **커밋된 테스트가 아니라 픽스처 `[10, 5, −2]` 위의 변이 실행**
+결과라, 재현하려면 그 픽스처에 변이를 다시 심어야 한다(감사 경로를 코드 주석에 명시).
 
 **M5는 테스트 공백이 아니라 등가 변이다.** 1차 정렬 키가 기대절감액 자신이므로 상위
 `positive_candidates` 순위는 **정확히** 양수 고객이고, `selected_count = min(예산, 양수인원)`이
@@ -512,3 +521,5 @@ ARCHITECTURE-SPINE AD-9 Rule은 아직 3단계를 열거한다. 스토리 범위
 |---|---|
 | 2026-07-22 | 스토리 3-3 create-story. 3-2 인계 미결 2건을 **결정으로 닫음**(D1 음수는 순위 부여·예산 선택 제외 / D2 비음수 검사는 3-3 경계에서 fail-fast, `value.py` 불변). 3-2가 남긴 전제 하나를 실측으로 정정 — 음수 포함 여부는 양수의 dense rank를 바꾸지 않는다. 함정 5건 실측 기록: 배수가 예산 따라 x17.79→x1.00 수렴 · 실데이터 동점 0건(동점 규칙은 합성 픽스처로만 검증 가능) · 단일 seed 기준선이 배수를 x7.76~x14.09로 흔듦 · **두 parquet 행 오정렬이 모든 가드를 통과하며 총합을 37% 부풀림(사전조사가 실제로 밟음)** · 1인 1회 가정 유지 근거. 1-2 인계 항목(3-3 몫)이 "민감도"로 잘못 배정돼 있던 것을 재해석해 AC7로 세움 — 실제 소비 지점은 `customer_value` 2차 정렬 키이고, 단조 변환이 sentinel 값 비교를 조용히 통과하므로 **동점 그룹 내 순서**로 검증해야 한다. Status → ready-for-dev. 기준선 1b068da / 376 passed |
 | 2026-07-22 | 스토리 3-3 구현: `target_priority()`·`select_within_budget()`·`random_baseline()`·`multiple_over_random()`. D1·D2를 코드로 확정하고 3-2 인계 3건·1-2 인계 1건을 **해소**로 승격. **실측이 D1을 뒷받침**(예산 전원분에서 8,587명 정지 → 1,456,900 vs 예산만 자르기 1,454,088, 2,812 차이). 발견 3건: **AD-12의 "dense"는 CLIENTNUM 유일성 하에서 무력**(dense/min/first 동일) · **양수 마스크는 등가 변이라 KILL 불가**(다중 방어로 유지, M9/M10으로 실효 실측) · **배수 곡선은 x1.00이 아니라 x1.18에서 바닥**(정책이 음수를 안 사므로 — 사전조사 표는 예산만 자르는 정책의 곡선이었다). AD-9 가드를 4단계로 확장(실스캔 2 → 3), 스파인 문구 갱신은 deferred. 376 → 421 passed. Status → review |
+| 2026-07-22 | 코드리뷰(3레이어 병렬). Auditor가 리포트·스토리 측정 수치를 **전건 독립 재실행해 재현 확인**(수치 오기 0). 결함은 전부 가드·주장. **patch 20건 적용 + API 변경 5건은 파티 보류**. 적용: `budget//cost` 부동소수 floor를 tolerance 방식으로(3-4가 비이진 cost 스윕 시 1명 덜 사던 버그) · 몫 overflow 가드 · `binding_constraint` 세 사실 분리(`BUDGET_BELOW_ONE_CONTACT` 신설) · `selected` dtype을 bool로 고정 · `random_baseline` 타입 검사 + 전인원 추출 시 구조적 0 산포 단락 · docstring/config 4곳의 재현 불가 수치(x1.00·x7.76~x14.09) 정정 · 테스트 결함 6건(플레이크 2·도달불가 1·미테스트 BOTH_BOUND·dtype·내부정합) · **AC3 구조 가드 신설**(`find_priority_selfcut_violations` — priority.py의 quantile/percentile/median 호출 금지, self-check 4건) · T1·T4·Debug Log·리포트 §①·"5줄" 문구 정정. 421 → **441 passed**, 회귀 0. 보류 5건(D1 계약 좁히기 + `multiple_over_random`/`random_baseline` 시그니처 3종 + budget=0 메시지)은 파티 논의 후 결정. Status → in-progress |
+| 2026-07-22 | 보류 5건 종결(파티 결정, daria 승인). **painpoint 재정의가 판정 기준을 바꿨다** — crm은 재무 워싱 스크리너의 리허설이고, item 3(x99)은 스크리너 헤드라인 무결성의 예행이라 nit → 필수로 승격. **적용**: `multiple_over_random(selection: BudgetSelection, baseline: RandomBaseline)` 시그니처 변경(유이 통합안) — 분자를 객체에서 직접 읽고 `n_contacts != selected_count` 거부, x99가 표현 불가능해짐. item 2는 구조적으로 함께 해소(분자가 검증된 선택의 총합이라 유한·비음수 보장). **4-1 인계 3건**: 함정 4 계약 좁히기(여기서 좁히면 done인 3-2가 비순응) · `random_baseline` 모집단 정체성 · `budget=0` 메시지. 441 → **443 passed**, 회귀 0, 리포트 수치 불변. Status → done |

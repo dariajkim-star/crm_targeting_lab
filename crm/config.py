@@ -224,7 +224,9 @@ COST_GRID: tuple[float, ...] = (1.0, 2.5, 5.0, 10.0, 20.0)
 # assumption about the world - it is a numerical convention, chosen a priori so
 # that the random comparison is a mean rather than one draw. A single seeded
 # draw is reproducible (AD-7) but not representative: measured at 500 contacts,
-# changing only the seed moves the reported multiple between x7.76 and x14.09.
+# changing only the seed moves the reported multiple between x8.35 and x13.82
+# (story 3-3 report section 3; the pre-investigation x7.76~x14.09 was a
+# different draw stream and was corrected in code review).
 # source: 규약 (arbitrary but fixed; callers may override per call)
 RANDOM_BASELINE_DRAWS: int = 200
 

@@ -31,6 +31,15 @@ _COMMON = "crm.common"
 # Campaign inner order (AD-9). A module may import earlier ones, never later.
 _CAMPAIGN_ORDER = ("matrix", "simulate", "priority", "sensitivity")
 
+# AD-12: quadrant cuts are owned by matrix.py alone. priority.py CONSUMES
+# `quadrant_official`; it must never compute a cut of its own. The mechanical
+# signature of a self-cut is a threshold-forming call - `.quantile(...)`,
+# `.percentile(...)`, `.median(...)` - so priority.py carrying any of these is a
+# re-cut regardless of intent. Story 3-3 AC3 was otherwise verified only by
+# prose and an uncommitted script (story 3-3 code review).
+_SELFCUT_MODULE = "crm/campaign/priority.py"
+_SELFCUT_METHODS = frozenset({"quantile", "percentile", "median"})
+
 # Pipeline stage shape (AD-8/AD-9).
 _PIPELINE_MAX_LINES = 40
 _PIPELINE_ALLOWED_DEF = "main"
@@ -227,6 +236,52 @@ def find_campaign_order_violations(root: Path) -> tuple[list[str], int]:
                 violations.append(f"AD-9 campaign order: {path.stem} imports later stage {tail}")
 
     return violations, len(files)
+
+
+def find_priority_selfcut_violations(root: Path) -> tuple[list[str], int]:
+    """AD-12: priority.py consumes quadrant_official, never cuts its own.
+
+    Story 3-3 AC3 requires the priority module to consume the official quadrant
+    column rather than compute a threshold of its own. Nothing mechanical
+    enforced that - the AD-9 order guard actually PERMITS priority.py to import
+    matrix.py, and the only positive evidence for AC3 was report prose plus an
+    uncommitted script (story 3-3 code review). This scans for the signature of
+    a self-cut: a call to ``.quantile``/``.percentile``/``.median`` on any
+    object, or the numpy equivalents, inside priority.py.
+
+    Fail-closed: an unparseable module is a violation, not a skip.
+    """
+    violations: list[str] = []
+    target = root / _SELFCUT_MODULE
+    if not target.exists():
+        # Not yet written - report zero scanned so the coverage table shows the
+        # rule inspected nothing rather than passing quietly.
+        return violations, 0
+
+    module = _module_name(root, target)
+    try:
+        tree = ast.parse(target.read_text(encoding="utf-8"))
+    except SyntaxError as err:
+        return [
+            f"AD-12 priority self-cut: {module} could not be scanned "
+            f"(syntax error at line {err.lineno}) - the rule fails closed"
+        ], 0
+    except UnicodeDecodeError:
+        return [f"AD-12 priority self-cut: {target.name} is not valid UTF-8"], 0
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        # `series.quantile(...)` / `np.percentile(...)` - both are attribute
+        # accesses whose final name is the threshold-forming method.
+        if isinstance(func, ast.Attribute) and func.attr in _SELFCUT_METHODS:
+            violations.append(
+                f"AD-12 priority self-cut: {module} calls .{func.attr}() - "
+                f"priority.py must consume quadrant_official, not compute a cut"
+            )
+
+    return violations, 1
 
 
 def _stage_name_pattern_ok(name: str) -> bool:

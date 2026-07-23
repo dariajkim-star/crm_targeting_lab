@@ -81,6 +81,7 @@ from pandas.api.types import is_bool_dtype, is_numeric_dtype
 from crm.config import COST_PER_CONTACT, RANDOM_BASELINE_DRAWS, RANDOM_SEED
 
 __all__ = [
+    "BUDGET_BELOW_ONE_CONTACT",
     "BUDGET_BOUND",
     "BOTH_BOUND",
     "BudgetSelection",
@@ -105,6 +106,7 @@ SELECTED_COLUMN = "campaign_selected"
 # not one fact but several, and a caller that cannot tell them apart will
 # report "no targets" when the real answer is "no money".
 ZERO_BUDGET = "zero_budget"
+BUDGET_BELOW_ONE_CONTACT = "budget_below_one_contact"
 NO_POSITIVE_CANDIDATES = "no_positive_candidates"
 BUDGET_BOUND = "budget"
 POSITIVITY_BOUND = "positivity"
@@ -114,6 +116,15 @@ _SAVING_AXIS = "expected_saving"
 _VALUE_AXIS = "customer_value"
 _CLIENTNUM_AXIS = "CLIENTNUM"
 
+# Absolute tolerance for the budget -> contact-count conversion. `budget //
+# cost` on floats floors the REPRESENTATION error, not the money: measured,
+# `1.0 // 0.1 == 9.0` and `11.0 // 1.1 == 9.0`, each one contact short (story
+# 3-3 code review). The shipped COST_GRID is all binary-exact so this is latent
+# today, but story 3-4 sweeping a non-dyadic cost (0.1, 1.1, 3.3) makes it live.
+# The direction of the error is not predictable (0.1+0.1+0.1 = 0.30000000000004
+# rounds the OTHER way), so it can only be guarded, not reasoned about.
+_BUDGET_TOL = 1e-9
+
 
 @dataclasses.dataclass(frozen=True)
 class RandomBaseline:
@@ -121,9 +132,10 @@ class RandomBaseline:
 
     Carries `draws` and `seed` because a mean with neither cannot be audited.
     A SINGLE seeded draw is reproducible but not representative - measured on
-    the real artifact, fifty single draws at 500 contacts put the multiple
-    anywhere between x7.76 and x14.09. `spread_total` is reported so the report
-    cannot quote a multiple as if it had no width.
+    the real artifact with THIS implementation, fifty single draws at 500
+    contacts put the multiple anywhere between x8.35 and x13.82 (report section
+    3). `spread_total` is reported so the report cannot quote a multiple as if
+    it had no width.
     """
 
     mean_total: float
@@ -377,6 +389,17 @@ def _validate_budget(budget: float, cost_per_contact: float) -> None:
             f"zero the budget buys everyone and the constraint this function "
             f"exists to apply disappears without any error."
         )
+    # Both operands are finite here, but their QUOTIENT can still overflow: a
+    # huge budget over a tiny cost (1.0 / 5e-324) is +inf, and `int(inf)` raises
+    # a bare OverflowError several lines later - a failure mode outside this
+    # module's documented `ValueError` contract (story 3-3 code review).
+    if not math.isfinite(budget / cost_per_contact):
+        raise ValueError(
+            f"budget / cost_per_contact is not finite (budget={budget}, "
+            f"cost_per_contact={cost_per_contact}). The contact count would "
+            f"overflow; the cost is too small relative to the budget to be a "
+            f"real per-contact price."
+        )
 
 
 def select_within_budget(
@@ -415,13 +438,13 @@ def select_within_budget(
 
     Raises:
         ValueError: for the reasons :func:`target_priority` raises, plus a
-            non-finite or negative budget, or a non-positive
-            ``cost_per_contact``.
+            non-finite or negative budget, a non-positive ``cost_per_contact``,
+            or a ``budget / cost_per_contact`` that overflows to non-finite.
     """
     _validate_budget(budget, cost_per_contact)
     priority = target_priority(expected_saving, value, clientnum)
 
-    affordable_contacts = int(budget // cost_per_contact)
+    affordable_contacts = int(math.floor(budget / cost_per_contact + _BUDGET_TOL))
     is_positive = expected_saving > 0.0
     positive_candidates = int(is_positive.sum())
     selected_count = min(affordable_contacts, positive_candidates)
@@ -435,16 +458,30 @@ def select_within_budget(
     # excludes every negative one - mutation run M5 (story 3-3) removed this
     # mask and no test could tell, which is the definition of an equivalent
     # mutant rather than a gap in the suite. What it defends against is a wrong
-    # `selected_count`: with the `min()` dropped, keeping this mask still
-    # selects only positives (measured total 15.0) while dropping both buys a
-    # value-destroying contact (13.0).
-    selected = (priority <= selected_count) & is_positive
+    # `selected_count`: on the fixture savings [10, 5, -2] with an unbounded
+    # budget, dropping the `min()` but KEEPING this mask still selects only the
+    # positives (total 15.0), while dropping both buys the -2 contact (total
+    # 13.0). Those figures come from a mutation run, not a committed test, so
+    # they are reproducible only by re-planting the mutation on that fixture.
+    # `.astype(bool)` pins the dtype: a nullable Int64/Float64 saving axis (the
+    # mart-friendly dtypes story 4-1 may hand in) makes `& is_positive` return a
+    # `BooleanDtype` mask, so `campaign_selected` would land in parquet as
+    # `boolean` for one caller and `bool` for another (story 3-3 code review).
+    selected = ((priority <= selected_count) & is_positive).astype(bool)
     selected.name = SELECTED_COLUMN
 
-    if positive_candidates == 0:
+    # Order matters (story 3-3 code review): when NO contact is affordable, the
+    # budget is the total blocker and is reported first - and a budget of
+    # exactly zero is a different fact from a budget that merely falls short of
+    # one contact's price (4.99 against a cost of 5.0). Only once at least one
+    # contact is affordable does the positivity of the candidates decide the
+    # outcome. The earlier `positive_candidates == 0` first meant an all-negative
+    # population with a zero budget reported "no candidates" and hid the fact
+    # that there was also no money - the exact confusion AC4 exists to prevent.
+    if affordable_contacts == 0:
+        binding_constraint = ZERO_BUDGET if budget == 0.0 else BUDGET_BELOW_ONE_CONTACT
+    elif positive_candidates == 0:
         binding_constraint = NO_POSITIVE_CANDIDATES
-    elif affordable_contacts == 0:
-        binding_constraint = ZERO_BUDGET
     elif affordable_contacts < positive_candidates:
         binding_constraint = BUDGET_BOUND
     elif affordable_contacts > positive_candidates:
@@ -491,9 +528,10 @@ def random_baseline(
 
     Repeated draws, not one. A single seeded draw is reproducible, which is
     what AD-7 asks for, but reproducibility is not representativeness:
-    measured on the real artifact at 500 contacts, changing only the seed moves
-    the resulting multiple between x7.76 and x14.09. Quoting one of those to
-    two decimal places would present a spread as a fact.
+    measured on the real artifact with this implementation at 500 contacts,
+    changing only the seed moves the resulting multiple between x8.35 and
+    x13.82 (report section 3). Quoting one of those to two decimal places would
+    present a spread as a fact.
 
     Args:
         expected_saving: Per-customer expected saving for the WHOLE population,
@@ -509,16 +547,29 @@ def random_baseline(
         provenance needed to reproduce it.
 
     Raises:
-        ValueError: on a non-positive ``draws``, or an ``n_contacts`` outside
-            ``0..len(expected_saving)``.
+        ValueError: on a non-int (or ``bool``) ``n_contacts``/``draws``/``seed``,
+            a non-positive ``draws``, a negative ``seed``, or an ``n_contacts``
+            outside ``0..len(expected_saving)``.
     """
     _require_series(expected_saving, _SAVING_AXIS)
     _validate_axis(expected_saving, _SAVING_AXIS, non_negative=False)
+    # Type-check before the range checks: `0 <= 2.5 <= n` and `3.7 > 0` both
+    # pass, and the failure then surfaces from numpy naming neither the argument
+    # nor this function (story 3-3 code review). `bool` is the sharp edge - it
+    # is an `int` subtype, so a flag passed by mistake would clear the range
+    # test. Rejected here with the same discipline `_require_series` applies.
+    for _name, _val in (("n_contacts", n_contacts), ("draws", draws), ("seed", seed)):
+        if isinstance(_val, bool) or not isinstance(_val, (int, np.integer)):
+            raise ValueError(
+                f"{_name} must be an int, got {type(_val).__name__} ({_val!r})."
+            )
     if draws <= 0:
         raise ValueError(
             f"draws must be positive, got {draws}. The point of this function "
             f"is that one draw is not a baseline."
         )
+    if seed < 0:
+        raise ValueError(f"seed must be non-negative, got {seed}.")
     if not 0 <= n_contacts <= len(expected_saving):
         raise ValueError(
             f"n_contacts must lie in 0..{len(expected_saving)}, got "
@@ -527,6 +578,25 @@ def random_baseline(
         )
 
     population = expected_saving.to_numpy(dtype=float)
+
+    # Sampling the WHOLE population without replacement is a permutation, so
+    # every draw sums to the same number and the spread is a STRUCTURAL zero,
+    # not a measured one (story 3-3 code review). Short-circuit rather than burn
+    # `draws` identical permutations and report a zero width that a reader could
+    # mistake for a tight estimate. `n_contacts == 0` is the same: the empty sum
+    # is 0.0 with no variation.
+    if n_contacts == len(population) or n_contacts == 0:
+        total = float(population.sum()) if n_contacts else 0.0
+        return RandomBaseline(
+            mean_total=total,
+            spread_total=0.0,
+            minimum_total=total,
+            maximum_total=total,
+            draws=draws,
+            seed=seed,
+            n_contacts=n_contacts,
+        )
+
     rng = np.random.default_rng(seed)
     totals = np.fromiter(
         (
@@ -548,21 +618,61 @@ def random_baseline(
     )
 
 
-def multiple_over_random(selected_total: float, baseline: RandomBaseline) -> float:
+def multiple_over_random(selection: BudgetSelection, baseline: RandomBaseline) -> float:
     """How many times better the targeted campaign is (FR13, success signal 2).
 
-    Refuses a non-positive denominator instead of returning a ratio. With a
-    baseline of -100 and a targeted total of 320, the arithmetic yields -3.2,
-    and there is no reading of "-3.2 times better" that is not a lie.
+    Takes the two RESULT OBJECTS, not a bare float (story 3-3 code review,
+    decision by party). The earlier signature accepted any ``selected_total``,
+    so an 8,587-contact selection could be divided by a 100-contact baseline
+    and print x99 with nothing raised - a plausible, publishable, wrong
+    headline. With the objects in hand the function reads the numerator off
+    ``selection.selected_total`` itself and REFUSES a baseline drawn at a
+    different contact count, so the mismatch is no longer expressible at the
+    call site. The numerator needs no separate finiteness guard for the same
+    reason: ``BudgetSelection`` is built from validated axes and a selection
+    restricted to strictly positive savings, so its total is finite and
+    non-negative by construction.
+
+    Refuses a non-positive denominator instead of returning a ratio: with a
+    zero or negative random total, the arithmetic yields a number that reads
+    as a performance ratio and is not one.
 
     THE RESULT IS A FUNCTION OF THE BUDGET and must never be quoted without
-    it. Measured, the multiple falls monotonically from x17.79 at 100 contacts
-    to x1.00 at the full population - contacting everyone IS the random
-    campaign. The headline is the curve, not any single point on it.
+    it. Measured with the D1 policy, the multiple falls monotonically from
+    x17.27 at 100 contacts to x1.18 at the positive-only floor (8,587
+    contacts): once the budget covers every positive customer, buying more
+    would only add negative-saving contacts, which the selection refuses. It
+    does NOT reach x1.00 - that belongs to the rejected budget-only policy,
+    which keeps buying to the full population (report section 2). The headline
+    is the curve, not any single point on it.
 
     Raises:
-        ValueError: if ``baseline.mean_total`` is not strictly positive.
+        ValueError: on a non-``BudgetSelection``/``RandomBaseline`` argument,
+            a baseline drawn at a different contact count than the selection
+            bought, or a ``baseline.mean_total`` that is not strictly
+            positive.
     """
+    if not isinstance(selection, BudgetSelection):
+        raise ValueError(
+            f"multiple_over_random needs a BudgetSelection, got "
+            f"{type(selection).__name__}. Passing a bare total is exactly the "
+            f"call shape that allowed a mismatched baseline (story 3-3 code "
+            f"review)."
+        )
+    if not isinstance(baseline, RandomBaseline):
+        raise ValueError(
+            f"multiple_over_random needs a RandomBaseline, got "
+            f"{type(baseline).__name__}."
+        )
+    if baseline.n_contacts != selection.selected_count:
+        raise ValueError(
+            f"the baseline was drawn at {baseline.n_contacts} contacts but the "
+            f"selection bought {selection.selected_count}. Comparing totals of "
+            f"different campaign sizes produces a plausible-looking multiple "
+            f"that answers no question - measured, an 8,587-contact selection "
+            f"over a 100-contact baseline printed x99 with nothing raised. "
+            f"Re-draw the baseline with n_contacts={selection.selected_count}."
+        )
     if not baseline.mean_total > 0.0:
         raise ValueError(
             f"a multiple needs a positive baseline, got "
@@ -570,4 +680,4 @@ def multiple_over_random(selected_total: float, baseline: RandomBaseline) -> flo
             f"total produces a number that reads as a performance ratio and is "
             f"not one; report the two totals separately instead."
         )
-    return float(selected_total) / baseline.mean_total
+    return selection.selected_total / baseline.mean_total

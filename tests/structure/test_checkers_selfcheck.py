@@ -177,6 +177,61 @@ def test_campaign_checker_ignores_external_name_collisions(tmp_path: Path) -> No
     assert violations == []
 
 
+# --- AD-12: priority.py must not compute its own quadrant cut ----------------
+
+
+def test_selfcut_checker_flags_quantile_in_priority(tmp_path: Path) -> None:
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "crm/campaign/priority.py",
+        "def cut(s):\n    return s.quantile(0.5)\n",
+    )
+
+    violations, scanned = checkers.find_priority_selfcut_violations(root)
+
+    assert scanned == 1
+    assert any("quantile" in v for v in violations)
+
+
+def test_selfcut_checker_flags_numpy_percentile(tmp_path: Path) -> None:
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "crm/campaign/priority.py",
+        "import numpy as np\ndef cut(a):\n    return np.percentile(a, 50)\n",
+    )
+
+    violations, _ = checkers.find_priority_selfcut_violations(root)
+
+    assert any("percentile" in v for v in violations)
+
+
+def test_selfcut_checker_allows_consuming_priority(tmp_path: Path) -> None:
+    """Consuming quadrant labels and ranking is the permitted shape."""
+    root = _clean_tree(tmp_path)
+    _write(
+        root,
+        "crm/campaign/priority.py",
+        "import numpy as np\ndef rank(s):\n    return np.lexsort((s.to_numpy(),))\n",
+    )
+
+    violations, scanned = checkers.find_priority_selfcut_violations(root)
+
+    assert scanned == 1
+    assert violations == []
+
+
+def test_selfcut_checker_fails_closed_on_syntax_error(tmp_path: Path) -> None:
+    root = _clean_tree(tmp_path)
+    _write(root, "crm/campaign/priority.py", "def broken(:\n")
+
+    violations, scanned = checkers.find_priority_selfcut_violations(root)
+
+    assert scanned == 0
+    assert violations
+
+
 # --- AD-8 / AD-9: pipeline stage shape --------------------------------------
 
 

@@ -12,6 +12,7 @@ starts biting the moment a matching file appears.
 | AD-1 lane isolation | crm/segment and crm/churn never meet crm/ltv | 21 | 0 |
 | AD-9 layering | crm/ never imports pipelines/ | 21 | 0 |
 | AD-9 campaign order | matrix -> simulate -> priority -> sensitivity | 3 | 0 |
+| AD-12 priority self-cut | priority.py consumes quadrant_official, never re-cuts | 1 | 0 |
 | AD-8 pipeline shape | stages <=40 lines, main() only | 3 | 0 |
 | AD-1 stateless common | crm/common holds no fitted state | 4 | 0 |
 | AD-4 config single source | crm/config.py is the only app config | 2 | 0 |
