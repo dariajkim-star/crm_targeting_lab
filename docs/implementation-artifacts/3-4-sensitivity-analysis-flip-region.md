@@ -6,7 +6,7 @@ artifact_id: 9e1a4d71800f
 
 # Story 3.4: 민감도 분석과 결론 반전 구간
 
-Status: review
+Status: done
 
 ## Story
 

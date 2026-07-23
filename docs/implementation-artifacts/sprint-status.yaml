@@ -150,7 +150,11 @@ development_status:
   # D3 인계 전제 반증: 그리드 전역 동점 0건(아핀 보존). D4: 스파인 AD-9 4단계 개정(campaign order 3→4).
   # AC6 find_sensitivity_selfcut_violations 대칭 가드. baseline 443→464 passed(회귀 0). _bmad 이관이
   # AD-4 가드에 걸려 red였던 것을 _SKIP_DIRS로 해소. 3-1·3-3·AD-9 인계 3건 해소.
-  3-4-sensitivity-analysis-flip-region: review
+  # 3-4 done 2026-07-23: 코드리뷰 파티(code-review-crew) 종결 — F1(극단 분위수 KeyError 방어)·
+  # F2(_bmad 가드 별도 커밋 분리)·F5(breakeven 분면 서브셋)·F3(iterdir 삭제, AST 주력)·F6(affine docstring),
+  # F4 기각(디렉터리 스킵이 정답). 443→465 passed. 커밋 0194d4e·2addc21·4dd44d7 origin/master 푸시.
+  3-4-sensitivity-analysis-flip-region: done
+  # epic-3 전 스토리(3-0~3-4) done. epic-3-retrospective만 optional로 남음(미실시).
   epic-3-retrospective: optional
 
   epic-4: backlog
