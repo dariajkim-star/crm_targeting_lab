@@ -401,14 +401,22 @@ def quadrant_breakeven_rate(
             f"find a break-even for."
         )
 
+    # Subset to the quadrant ONCE, then sweep the rate on just those customers.
+    # `expected_saving` over the whole population per bisection step would
+    # compute ~10k savings only to average a few hundred - the mean is a
+    # property of this quadrant alone. Boolean indexing keeps the Series name
+    # and a shared index, so `expected_saving`'s pairing checks still hold.
+    prob_q = churn_prob_calibrated[mask]
+    value_q = value[mask]
+
     def mean_at(rate: float) -> float:
         saving = expected_saving(
-            churn_prob_calibrated,
-            value,
+            prob_q,
+            value_q,
             retention_rate=rate,
             cost_per_contact=cost_per_contact,
         )
-        return float(saving[mask].mean())
+        return float(saving.mean())
 
     lo, hi = bracket
     mean_lo, mean_hi = mean_at(lo), mean_at(hi)

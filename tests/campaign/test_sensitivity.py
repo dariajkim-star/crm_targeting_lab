@@ -223,10 +223,14 @@ def test_grid_produces_no_ties_when_value_at_risk_is_distinct():
 def test_affine_preservation_holds_symbolically():
     """The reason ties never form, checked without re-running the sweep.
 
-    A direct statement of the D3 argument on a controlled vector: an affine
-    transform with a non-zero slope maps distinct inputs to distinct outputs.
-    Not a re-implementation of the sweep - a property of the arithmetic it
-    relies on.
+    NOT A SWEEP-OUTPUT COMPARISON. This does not call `sweep_sensitivity` and
+    does not check anything the module computed against a re-typed formula (that
+    would be the AD-9 tautology 3-2 warned about, code review party F6). It
+    proves the standalone D3 arithmetic property the sweep RELIES on: an affine
+    transform with a non-zero slope maps distinct inputs to distinct outputs, so
+    `saving = P*value*rate - cost` cannot create a tie for rate > 0. `var * rate
+    - cost` below is that abstract property on a controlled vector, never an
+    oracle for the module.
     """
     var = np.array([10.0, 20.0, 30.0, 40.0, 50.0])  # distinct value-at-risk
     for rate in RETENTION_GRID:
@@ -373,23 +377,21 @@ def test_annex_reports_zero_for_an_emptied_cell_not_keyerror(score_frame):
     assert sum(n for _, n in comp.counts) == len(score)
 
 
-def test_annex_writes_nothing_official_or_to_disk(score_frame, tmp_path, monkeypatch):
-    """AC7/AD-3: the annex persists nothing - no official column, no file.
+def test_annex_writes_nothing_official_or_to_disk(score_frame):
+    """AC7/AD-3: the annex persists nothing - no write call, no official column.
 
-    Runs with the cwd moved to an empty tmp dir and asserts no file appears, and
-    that the module source contains neither `to_parquet` nor a `quadrant_official`
-    write. The annex is a report input, not a mart.
+    The defense is STRUCTURAL, not a filesystem probe. An earlier version moved
+    the cwd to an empty tmp dir and asserted it stayed empty, but that only
+    proved the function did not write THERE - a future `to_parquet(other_path)`
+    would slip straight past it (code review party F3, Vex). The real guarantee
+    is that the module carries no persistence call and no official column name at
+    all, which is what the AST pins here; the function also takes no path
+    argument, so it has nowhere to write.
     """
     score, value = score_frame
-    monkeypatch.chdir(tmp_path)
-
     annex = risk_quantile_annex(score, value)
-
     assert isinstance(annex, RiskQuantileAnnex)
-    assert list(tmp_path.iterdir()) == []  # nothing written
 
-    # No persistence call anywhere in the module (AST, so docstring prose that
-    # explains AD-3 does not count as a write).
     tree = ast.parse(_SENSITIVITY_SOURCE)
     write_calls = {
         node.func.attr
