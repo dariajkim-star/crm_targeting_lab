@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-23 (epic-3 회고 done — A2→3-0 승격 최대성과, 미결 4-1 수렴 9건, 액션 B1~B8 등재. 이하 히스토리: 3-4 create-story: ready-for-dev — 결론=분면 부호+접촉비율(D1), 코어 2D+risk_q 2차(D2), 동점0 반증(D3), 자체컷 가드 신설(AC6). 3-3 done/443 passed는 미커밋 working tree. epic-2 무기한 동결)
+# last_updated: 2026-07-23 (4-1 split→4-1a/4-1b [회고 B1, daria 승인], epic-4 in-progress, 4-1a ready-for-dev — 고객 마트 조립·CLIENTNUM 조인·정규 스키마. 이하 히스토리: epic-3 회고 done — A2→3-0 승격 최대성과, 미결 4-1 수렴 9건, 액션 B1~B8 등재. 3-4 create-story: ready-for-dev — 결론=분면 부호+접촉비율(D1), 코어 2D+risk_q 2차(D2), 동점0 반증(D3), 자체컷 가드 신설(AC6). 3-3 done/443 passed는 미커밋 working tree. epic-2 무기한 동결)
 # project: crm-targeting-lab
 # project_key: NOKEY
 # tracking_system: file-system
@@ -159,8 +159,17 @@ development_status:
   # 중대 발견 없음(에픽4 재계획 불필요). 리스크는 4-1 하중 — B1 분할 사전검토 선결. 상세: epic-3-retro-2026-07-23.md
   epic-3-retrospective: done
 
-  epic-4: backlog
-  4-1-customer-mart-schema: backlog
+  epic-4: in-progress
+  # 4-1 split into 4-1a/4-1b (2026-07-23, epic-3 회고 B1 판정 — daria 승인): 4-1이 미결 부채
+  # 9건 수렴점이라 3-3급 하중. 1-6a/b·3-3 선례대로 분할해 리뷰 폭증(John 교훈)을 예방한다.
+  # 4-1a=디스크에 올바른 마트(조립 헬퍼+05_marts / CLIENTNUM 라벨 조인=함정4 방어 / 행수 보존 /
+  #   artifact_id 게이트 AD-5 / 결정론 바이트 동일 / mart_customers.schema.md 정규 + AD-12 정의 고정).
+  # 4-1b=아티팩트 주변 경화(target_priority 3축 CLIENTNUM 계약 좁히기 구item1 / random_baseline 모집단
+  #   구item4 / budget=0 빈 캠페인 UX 구item5 / 마트 오용 방지 표기 churn_score vs churn_prob_calibrated
+  #   +19% / customer_value 호출부 재가중 보호 1-2 인계 / 세션 리포트 커밋 경로 06|reports 3-2F7·3-3재발).
+  # 4-2는 epic-2(동결) 산출 의존이라 4-1과 무관하게 blocked. 상세: epic-3-retro-2026-07-23.md §6 B1~B5.
+  4-1a-customer-mart-assembly-schema: ready-for-dev
+  4-1b-contract-narrowing-misuse-prevention: backlog
   4-2-ltv-demo-mart-schema: backlog
   4-3-dashboard-specification: backlog
   4-4-public-check-readme-tableau-publish: backlog
