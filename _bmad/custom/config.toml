@@ -1,0 +1,9 @@
+# Team / enterprise overrides for _bmad/config.toml.
+# Committed to the repo — applies to every developer on the project.
+# Tables deep-merge over base config; keyed entries merge by key.
+
+# 프로젝트별 설치(2026-07-23 이관): 이 _bmad는 crm-targeting-lab 안이라 {project-root}=crm-targeting-lab.
+# 재설치로 config.toml/config.yaml이 재생성돼도 아래 경로가 유지되도록 pin.
+[modules.bmm]
+planning_artifacts = "{project-root}/docs/planning-artifacts"
+implementation_artifacts = "{project-root}/docs/implementation-artifacts"

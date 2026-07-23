@@ -1,0 +1,21 @@
+# BMM Module Configuration
+# Version: 6.9.0
+#
+# ✅ 프로젝트별 설치 (2026-07-23 이관). 이 _bmad는 crm-targeting-lab **안에** 있고,
+#    Claude Code를 이 폴더에서 열면 {project-root} = crm-targeting-lab 로 풀린다.
+#    경로에 프로젝트명 접두어가 없다 — {project-root}가 이미 이 프로젝트다.
+#    Desktop 전역 _bmad와 달리 다른 프로젝트 창과 공유하지 않으므로 덮어써질 일이 없다.
+#
+# ⚠️ 반드시 이 폴더를 작업 디렉터리로 열고 실행할 것:
+#      cd C:\Users\user\Desktop$d ; claude
+#    Desktop에서 열면 스킬이 Desktop/_bmad(구 공유본)를 읽어 이 파일이 무시된다.
+
+user_skill_level: intermediate
+
+planning_artifacts: "{project-root}/docs/planning-artifacts"
+implementation_artifacts: "{project-root}/docs/implementation-artifacts"
+project_knowledge: "{project-root}/docs"
+
+# Core Configuration Values
+communication_language: Korean
+document_output_language: Korean
