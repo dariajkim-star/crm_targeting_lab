@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-23 (3-4 create-story: ready-for-dev — 결론=분면 부호+접촉비율(D1), 코어 2D+risk_q 2차(D2), 동점0 반증(D3), 자체컷 가드 신설(AC6). 3-3 done/443 passed는 미커밋 working tree. epic-2 무기한 동결)
+# last_updated: 2026-07-23 (epic-3 회고 done — A2→3-0 승격 최대성과, 미결 4-1 수렴 9건, 액션 B1~B8 등재. 이하 히스토리: 3-4 create-story: ready-for-dev — 결론=분면 부호+접촉비율(D1), 코어 2D+risk_q 2차(D2), 동점0 반증(D3), 자체컷 가드 신설(AC6). 3-3 done/443 passed는 미커밋 working tree. epic-2 무기한 동결)
 # project: crm-targeting-lab
 # project_key: NOKEY
 # tracking_system: file-system
@@ -154,8 +154,10 @@ development_status:
   # F2(_bmad 가드 별도 커밋 분리)·F5(breakeven 분면 서브셋)·F3(iterdir 삭제, AST 주력)·F6(affine docstring),
   # F4 기각(디렉터리 스킵이 정답). 443→465 passed. 커밋 0194d4e·2addc21·4dd44d7 origin/master 푸시.
   3-4-sensitivity-analysis-flip-region: done
-  # epic-3 전 스토리(3-0~3-4) done. epic-3-retrospective만 optional로 남음(미실시).
-  epic-3-retrospective: optional
+  # epic-3 전 스토리(3-0~3-4) done. epic-3 회고 완료 2026-07-23.
+  # 최대 성과: 에픽1 A2 → 스토리 3-0 승격(OOF+Platt 투트랙). 미결 대부분 4-1로 수렴(부채 9건).
+  # 중대 발견 없음(에픽4 재계획 불필요). 리스크는 4-1 하중 — B1 분할 사전검토 선결. 상세: epic-3-retro-2026-07-23.md
+  epic-3-retrospective: done
 
   epic-4: backlog
   4-1-customer-mart-schema: backlog
@@ -183,11 +185,11 @@ action_items:
   - epic: 1
     action: "문서가 뒤처지지 않기 보완 — 재산출 시 갱신 대상 문서 체크리스트를 스토리 DoD에 편입"
     owner: "Paige"
-    status: open
+    status: in-progress
   - epic: 1
     action: "재리뷰는 whole diff만 — 1-7에서 효과 실증(2라운드 -> 1라운드). conventions에 관례로 명문화"
     owner: "Amelia"
-    status: open
+    status: in-progress
   - epic: 1
     action: "epics.md에 에픽 실행 순서 변경(3 -> 2)과 근거 기록"
     owner: "Amelia"
@@ -195,12 +197,44 @@ action_items:
   - epic: 1
     action: "3-2 액션 후보는 SPEC 예시가 아닌 1-7 실측 매핑(churn-drivers-actions-1-7.md)에서만 도출 — CAP-3 한도 불만형 예시가 실증에서 부정된 선례"
     owner: "Mary"
-    status: open
+    status: done
   - epic: 1
     action: "에픽2 착수 전 pymc-marketing 설치 리스크 선검증 (numpy 재다운그레이드 가능성 — shap 선례)"
     owner: "Winston"
     status: open
   - epic: 1
     action: "SHAP != 인과 경고가 마트(4-1)·대시보드(4-3) 화면까지 전달되는지 추적"
+    owner: "Sally"
+    status: in-progress
+  - epic: 3
+    action: "4-1 하중 분할 사전검토 — 미결 9건 수렴을 4-1a(마트 조립+CLIENTNUM 조인+스키마 문서)/4-1b(계약 좁히기·오용 방지)로 나눌지 create-story 시 판정"
+    owner: "Amelia + Winston"
+    status: open
+  - epic: 3
+    action: "4-1은 반드시 CLIENTNUM 조인으로 마트 조립 — 함정4 유일 방어. target_priority 3축 계약 좁히기 검토(크리티컬 패스)"
+    owner: "Winston"
+    status: open
+  - epic: 3
+    action: "AD-12 스키마 문서 고정 — target_priority·campaign_selected 정의(전원 순위 / 선택=예산 AND 양수)를 marts 문서에 명명"
+    owner: "Paige"
+    status: open
+  - epic: 3
+    action: "마트 오용 방지 — churn_score/churn_prob_calibrated 드롭다운 오선택(+19%) 대응. 스키마 금지/용도 칸 or 뷰에서 churn_score 제외(4-3 분리)"
+    owner: "Sally"
+    status: open
+  - epic: 3
+    action: "세션 리포트 커밋 경로 확립 — 06 stage 또는 reports/ 디렉터리로 집계 경로를 커밋된 코드화(3-2 F7 / 3-3 재발 종결)"
+    owner: "Amelia"
+    status: open
+  - epic: 3
+    action: "에픽1 A3/A4 이월 재확인 — 문서 체크리스트 DoD 편입 + whole diff 재리뷰 관례 명문화(에픽3에서도 미정착)"
+    owner: "Paige + Amelia"
+    status: open
+  - epic: 3
+    action: "단일값 리텐션율(0.30) — 데이터로 분해 불가임을 산출물에 계속 명시. 실캠페인 로그 확보 시 분해. 본공연 스크리너 이식 시 조인 증가로 함정4 계약 가치 상승"
+    owner: "Mary"
+    status: open
+  - epic: 3
+    action: "risk_quantile annex 화면 노출 감시 + SHAP!=인과 경고 화면 전달(A8 승계) — 4-3 시나리오 뷰가 annex를 official처럼 노출하지 않는지"
     owner: "Sally"
     status: open
