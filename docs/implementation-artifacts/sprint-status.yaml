@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-24 (4-1b done — 계약 좁히기·오용 방지, 인계 부채 전종결. 4-1a done — 마트 조립·CLIENTNUM 조인·정규 스키마, 코드리뷰 파티 종결.
+# last_updated: 2026-07-24 (4-3 done — 대시보드 사양서, 시나리오 탭5 분리·Sally 라인 종결. 4-1b done — 계약 좁히기·오용 방지, 인계 부채 전종결. 4-1a done — 마트 조립·CLIENTNUM 조인·정규 스키마, 코드리뷰 파티 종결.
 # 이하 히스토리: 4-1 split→4-1a/4-1b [회고 B1, daria 승인], epic-4 in-progress, 4-1a ready-for-dev — 고객 마트 조립·CLIENTNUM 조인·정규 스키마. 이하 히스토리: epic-3 회고 done — A2→3-0 승격 최대성과, 미결 4-1 수렴 9건, 액션 B1~B8 등재. 3-4 create-story: ready-for-dev — 결론=분면 부호+접촉비율(D1), 코어 2D+risk_q 2차(D2), 동점0 반증(D3), 자체컷 가드 신설(AC6). 3-3 done/443 passed는 미커밋 working tree. epic-2 무기한 동결)
 # project: crm-targeting-lab
 # project_key: NOKEY
@@ -196,7 +196,13 @@ development_status:
   # 차단, 층 분리 완성 — 마트=감사·화면=오용방지), D3 campaign_selected는 시나리오 계산필드로 실체화
   # (AD-12 정의의 시각화, 예산=파라미터), D4 risk_quantile annex 전면 비반입(파라미터는 rate·cost만).
   # Sally A8(SHAP!=인과 캡션 규약)·B8(annex 금지 조항) 여기서 종결 예정. 마트·코드 바이트 불변이 DoD.
-  4-3-dashboard-specification: review
+  # 4-3 done 2026-07-24: dev+3레이어+파티 리뷰 종결(daria 전권 위임). Auditor CONCERNS → 전건 처분:
+  # 핵심은 AD-3 ② 위반(create-story 층 결함 — 탭2 공식+시나리오 공존 설계) → 시나리오 전용 탭5 분리로
+  # 구조 해소(공식 4탭+시나리오 1탭). 금지 조항 자기모순 교정, 필드 표 탭 칸 정합+검증, 슬라이스
+  # 견고화, 산식 정직 각주(_BUDGET_TOL·1-base·파라미터 정의역). 문서-계약 테스트 10→16건.
+  # 385→391 passed, 마트·코드 바이트 불변. Sally 라인(A8·B8·오용방지) 종결 확정.
+  # 교훈: 문서-계약 테스트 3대 함정(미검증 항목=표류 항목 / 종료 앵커 소실 / 미파싱 칸) 실증·봉인.
+  4-3-dashboard-specification: done
   4-4-public-check-readme-tableau-publish: backlog
   epic-4-retrospective: optional
 
