@@ -105,6 +105,32 @@ def _index_by_clientnum(frame: pd.DataFrame, source: str) -> pd.DataFrame:
             f"assembled by label. A positional combine is exactly the +37.2% "
             f"defect this join exists to prevent (story 3-3 '함정 4')."
         )
+    # A missing identifier is always a failure, and it must be NAMED here. One
+    # NaN slips past `duplicated()` (which needs two), lands in the index, and
+    # then `set()` comparison reports the same nan as simultaneously missing AND
+    # extra ("sets differ: missing [nan] ... extra [nan]") - a self-contradictory
+    # message that costs whoever debugs it the real cause (code review E1).
+    if frame[_CLIENTNUM].isna().any():
+        count = int(frame[_CLIENTNUM].isna().sum())
+        raise ValueError(
+            f"{source} carries {count} missing {_CLIENTNUM} value(s). A join "
+            f"key cannot be null - fix the upstream extract rather than "
+            f"letting an unidentified row into the mart."
+        )
+    # The join key must be an INTEGER dtype in every source. `set()` comparison
+    # treats 708082083 == 708082083.0 as equal, so an int/float mix would pass
+    # the exact-set gate and hand downstream consumers a float index -
+    # `expected_saving` guards index dtype precisely because `Index.equals`
+    # ignores it (story 3-2, written for this join). Rejected, not cast: quietly
+    # casting a float key ASSUMES no rounding ever split two keys, which is an
+    # assumption this module cannot check (code review E2).
+    if not pd.api.types.is_integer_dtype(frame[_CLIENTNUM]):
+        raise ValueError(
+            f"{source} carries {_CLIENTNUM} as dtype "
+            f"'{frame[_CLIENTNUM].dtype}', expected an integer dtype. Re-save "
+            f"the upstream artifact with an int64 key rather than casting "
+            f"here - a float join key can hide rounding-split identities."
+        )
     duplicated = frame[_CLIENTNUM].duplicated()
     if duplicated.any():
         raise ValueError(
@@ -180,6 +206,18 @@ def build_customer_mart(
     # explicit, and it is what makes the downstream index guards effective.
     ft = ft.reindex(bc.index)
     sc = sc.reindex(bc.index)
+
+    # segment_id is consumed as-is, but its DTYPE is part of the schema contract:
+    # a float64 segment_id with zero NaNs passes the null check and then
+    # `%.6f` serializes it as "1.000000" where the schema promises "1" (code
+    # review E3). Rejected at assembly, where the source can be named.
+    if not pd.api.types.is_integer_dtype(ft[_SEGMENT_ID]):
+        raise ValueError(
+            f"features_customers carries {_SEGMENT_ID} as dtype "
+            f"'{ft[_SEGMENT_ID].dtype}', expected an integer dtype - a float "
+            f"segment id would serialize as '1.000000' against the schema's "
+            f"integer contract."
+        )
 
     # Every axis is indexed by CLIENTNUM, so the consumed functions' index-equality
     # and CLIENTNUM guards all fire on a real mis-join instead of a bare RangeIndex.

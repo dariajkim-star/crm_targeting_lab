@@ -153,6 +153,61 @@ def test_missing_clientnum_column_names_the_source() -> None:
         build_customer_mart(no_key, features, scored)
 
 
+def test_single_nan_clientnum_is_rejected_with_the_real_cause_named() -> None:
+    """Code review E1: ONE NaN key slips past `duplicated()` and then the set
+    comparison reports the same nan as missing AND extra - a self-contradictory
+    message. The join key being null must be the named failure instead."""
+    bankchurners, features, scored = _sources()
+    poisoned = scored.copy()
+    poisoned.loc[0, "CLIENTNUM"] = np.nan
+
+    with pytest.raises(ValueError, match="missing CLIENTNUM"):
+        build_customer_mart(bankchurners, features, poisoned)
+
+
+def test_float_clientnum_dtype_is_rejected_not_cast() -> None:
+    """Code review E2: `set()` treats 708082083 == 708082083.0, so an int/float
+    key mix passes the exact-set gate. Rejected with a message naming the source
+    and pointing upstream - never silently cast (a float key can hide
+    rounding-split identities)."""
+    bankchurners, features, scored = _sources()
+    floated = features.copy()
+    floated["CLIENTNUM"] = floated["CLIENTNUM"].astype(float)
+
+    with pytest.raises(ValueError, match="features_customers carries CLIENTNUM as dtype 'float64'"):
+        build_customer_mart(bankchurners, floated, scored)
+
+
+def test_float_segment_id_dtype_is_rejected() -> None:
+    """Code review E3: a float64 segment_id with zero NaNs passes the null check
+    and serializes as '1.000000' against the schema's integer contract."""
+    bankchurners, features, scored = _sources()
+    floated = features.copy()
+    floated["segment_id"] = floated["segment_id"].astype(float)
+
+    with pytest.raises(ValueError, match="segment_id as dtype 'float64'"):
+        build_customer_mart(bankchurners, floated, scored)
+
+
+def test_marts_package_init_stays_import_free() -> None:
+    """Code review E5: `crm/marts/__init__.py` sits in NO lane (per-module
+    registration leaves the package unclassified), so a convenience import here
+    would bypass the AD-1 lane guard entirely. Mechanically pinned: the file
+    must contain no import statements at all."""
+    import ast
+
+    source = (REPO_ROOT / "crm" / "marts" / "__init__.py").read_text(encoding="utf-8")
+    imports = [
+        node for node in ast.walk(ast.parse(source))
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+    ]
+
+    assert imports == [], (
+        "crm/marts/__init__.py must stay import-free - the lane guard does not "
+        "classify the package module, so any import here is unguarded"
+    )
+
+
 # --- AC4: row preservation, no nulls -----------------------------------------
 
 
@@ -317,5 +372,20 @@ def test_real_data_mart_preserves_base_and_reproduces_correct_total() -> None:
     assert int(mart.isna().sum().sum()) == 0
     assert sorted(mart["target_priority"].tolist()) == list(range(1, 10128))
     assert mart["expected_saving"].sum() == pytest.approx(1454088, abs=1.0)
+    # Golden quadrant anchors (code review B3): the risk cut is the 0.75
+    # quantile of the RAW churn_score. If anyone ever wires the CALIBRATED
+    # column into `assign_quadrant` by mistake, the cut becomes the calibrated
+    # quantile and these go red - the column-name guard in `expected_saving`
+    # cannot see that swap, so this is the one net that catches it. Values are
+    # measured on artifact 9e1a4d71800f and recorded in the schema doc; a
+    # retrain moves them, and updating BOTH places together is the contract.
+    assert mart["threshold_official_risk"].iloc[0] == pytest.approx(0.132753, abs=1e-6)
+    assert mart["threshold_official_value"].iloc[0] == pytest.approx(3899.0)
+    assert mart["quadrant_official"].value_counts().to_dict() == {
+        "low_cost_keep": 4624,
+        "accept_churn": 2971,
+        "watch": 2089,
+        "save_first": 443,
+    }
     # Byte-identity across two independent builds on the real frame (AC6).
     assert serialize_mart(mart) == serialize_mart(build_customer_mart(bankchurners, features, scored))

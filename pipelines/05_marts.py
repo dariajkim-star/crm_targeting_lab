@@ -25,6 +25,7 @@ def main(input_paths: list[Path], output_paths: list[Path]) -> None:
     assert_scored_identity(scored, model_src)  # AD-5: fail before assembling on a stale/foreign run
     bankchurners = pd.read_parquet(bankchurners_src)
     mart = build_customer_mart(bankchurners, pd.read_parquet(features_src), scored)
+    # Unreachable by construction (the exact-set join is the real defence) - a second lock, not the guard.
     if len(mart) != len(bankchurners):
         raise ValueError(f"mart has {len(mart)} rows, expected all {len(bankchurners)} BankChurners customers (AC4)")
     meta = build_meta("05_marts", [bankchurners_src, features_src, scored_src], rows=len(mart))

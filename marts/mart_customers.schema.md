@@ -23,7 +23,7 @@
 | name | dtype | 단위 | nullable | 산출 모듈 | 정의 (1줄) |
 |---|---|---|---|---|---|
 | `CLIENTNUM` | int64 | ID | no | 원본(BankChurners) | 고객 식별자. 세 소스의 **라벨 조인 키**이자 마트의 정체성. 유일. |
-| `segment_id` | int64 | 범주(0–3) | no | `crm/segment/segments.py` | K-means 세그먼트 ID(1-4). features_customers에서 그대로 소비. |
+| `segment_id` | int64 | 범주(1–4) | no | `crm/segment/segments.py` | K-means 세그먼트 ID(1–4, 실측). features_customers에서 그대로 소비. |
 | `customer_value` | float64 | 원척도(무통화, NFR3) | no | `crm/segment/value.py::customer_value` | 고객 가치 = `Total_Trans_Amt`(원척도). **가정**: 거래액이 가치의 1차 프록시(SPEC CAP-5). 정규화·로그 없음. AD-11 단일 정의. |
 | `churn_score` | float32 | 확률스케일 순위신호 [0,1] | no | `crm/churn/model.py` (03) | **원(비보정) out-of-fold** 이탈 점수. **순위 전용**(2x2가 소비). 금액 곱셈 금지 — magnitude를 쓰면 총액 +19.0% 부풀림(3-2 실측). |
 | `churn_prob_calibrated` | float64 | 확률 [0,1] | no | `crm/churn/calibrate.py` (3-0) | **Platt 보정** 이탈 확률. **금액 전용**(expected_saving가 소비). churn_score와 한 프레임에 공존 — 용도 혼동 주의. |

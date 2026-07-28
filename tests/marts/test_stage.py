@@ -56,11 +56,14 @@ def _seed_inputs(tmp_path: Path, n: int = 40) -> tuple[Path, Path, Path, Path, s
     features = pd.DataFrame({"CLIENTNUM": clientnums, "segment_id": clientnums % 4})
     payload = serialize_model({"stub_model": 1})
     aid = artifact_id(payload)
+    # score and prob are DELIBERATELY different series (code review B2): with
+    # identical values, a stage that swapped the two columns would be
+    # undetectable here - the exact defect the schema doc warns costs +19%.
     scored = pd.DataFrame(
         {
             "CLIENTNUM": clientnums,
-            "churn_score": np.linspace(0.05, 0.9, n, dtype="float32"),
-            "churn_prob_calibrated": np.linspace(0.05, 0.9, n),
+            "churn_score": np.linspace(0.9, 0.10, n, dtype="float32"),
+            "churn_prob_calibrated": np.linspace(0.05, 0.85, n),
             "artifact_id": aid,
         }
     )

@@ -189,9 +189,29 @@ claude-opus-4-8 (Claude Code, dev-story workflow)
 - `tests/structure/../structure-guard-coverage.md` — 스캔 수 자동 갱신(테스트 산출)
 - `docs/implementation-artifacts/sprint-status.yaml` — 4-1a in-progress→review
 
+### Senior Developer Review (AI) — 2026-07-24
+
+**방식**: 3레이어 병렬(Blind Hunter / Edge Case Hunter / Acceptance Auditor, 신선 컨텍스트) → code-review-crew 파티(Vex·Grumbal·Boundary·Yui·Dana) 처분 판정.
+**Auditor 판정**: AC1~AC7 전부 충족, 4-1b 범위 침범 0, 릴리스 블로커 0.
+
+**처분 및 적용(전건 해소, 360 passed)**:
+- [x] **E1(+A1) P1**: 단일 NaN CLIENTNUM이 `duplicated()`를 통과해 자기모순 오류("missing [nan]...extra [nan]")로 실패 → 진입점(`_index_by_clientnum`)에서 NaN 키 명시 거부. 인덱스 null gap(A1) 동반 해소.
+- [x] **E2(+E4) P1**: int/float 키 혼합이 `set()` 비교(708082083==708082083.0)를 통과 → 조인 키 integer dtype 강제. **거부, 캐스팅 아님**(서명: 불확실을 확실로 세탁하지 않는다 — float 키는 반올림 분열 은폐 가능). 메시지가 상류 재저장을 지목(Dana 조건).
+- [x] **E3 P1**: float64 segment_id가 null 검사 통과 후 "1.000000" 직렬화 → integer dtype 강제.
+- [x] **B3 P2**: 분면 축 골든 단언 부재(calibrated 오배선 미탐) → 실데이터 오라클에 risk 컷 0.132753·value 컷 3899·분면 분포(4624/2971/2089/443) 승격. 스키마 문서와 동시 갱신 계약 명시.
+- [x] **B2 P2**: 스테이지 픽스처 score==prob라 스왑 원천 미탐 → 상이한 시리즈로 분리.
+- [x] **B4 P3**: 행수 assert는 집합검사로 도달 불가(tautology) → "이중 잠금, 방어 아님" 주석 정직화.
+- [x] **E5 P3**: `crm/marts/__init__`은 레인 미분류인데 docstring이 "per-module 강제" 단언 → docstring 정정 + **import 0건 기계 단언 테스트** 신설(레인 등록안은 기각 — `_matches` prefix 매칭이 4-2 ltv 마트를 Lane A로 끌고 감).
+- [x] **A2 P3**: 스키마 `segment_id` 단위 0–3 vs 정의 1-4 모순 → 실측(1–4)으로 통일.
+- **B1 기각**: `_expected_saving` 재구현 비교는 실데이터 골든 1,454,088이 앵커 + B3가 값 정확성 커버.
+- **B5 기각**: Edge가 오탐 반박(`read_verified_model_meta`가 artifact_id 검증 후 반환 — KeyError 경로 없음).
+- **B6/B7 기록만**: meta `created_at`은 실행마다 상이(바이트 동일 주장은 CSV 한정 — 테스트도 CSV만 비교, 정합). 문서 하단 "기준선 d408ddf·465 passed"는 create-story 시점 daria 환경 기록, frontmatter `baseline_commit a08106b`·이 환경 360 passed(churn 제외)와 구분됨(Debug Log 참조).
+- ➡️ **4-1b 인계 유지**: 마트 오용 방지 표기(churn_score vs prob 스키마 금지칸·뷰 제외)는 원 스코프대로.
+
 ### Change Log
 
 - 2026-07-24: 4-1a 구현 — 고객 마트 조립(CLIENTNUM 라벨 조인=함정4 방어), `05_marts` 스테이지, 정규 스키마, AD-5 게이트, 결정론 직렬화(정준 정렬), 원자적 쓰기+meta. 마트 아티팩트 디스크 산출(10,127행, 총합 1,454,088). 356 passed(churn 제외 회귀 0).
+- 2026-07-24: 코드리뷰(3레이어+파티) 반영 — P1 조인 키 위생 3건(NaN 거부·키 dtype 강제·segment_id dtype), P2 테스트 그물 2건(골든 분면 단언·스테이지 픽스처 분리), P3 청소 3건. 356→360 passed(회귀 0).
 
 ---
 
