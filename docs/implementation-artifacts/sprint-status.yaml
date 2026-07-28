@@ -308,9 +308,13 @@ action_items:
     owner: "daria + Mary"
     status: done
   - epic: 4
-    action: "스파이크 1일차 실행: docs/screener/spike-1-sec-disclosure-gap.md (T1~T6, kill criteria K1~K4 착수 전 확정). 최대 난관 = AC3 부재!=누락 대체설명 반증"
+    action: "스파이크 1일차 실행: docs/screener/spike-1-sec-disclosure-gap.md (T1~T6, kill criteria K1~K4 착수 전 확정). 최대 난관 = AC3 부재!=누락 대체설명 반증 — T1 done(취득경로·주석레벨 도달), T2 done(peer=SIC4 단독, filer status는 보정 공변량). 다음 = T3"
     owner: "daria + Amelia"
-    status: ready-for-dev
+    status: in-progress
+  - epic: 4
+    action: "T2 미확정 1건: peer 셀 최소 크기 임계값(잠정 n<10) 확정 — SIC3 1단계 승급/판정불가 분기점"
+    owner: "daria"
+    status: open
   - epic: 4
     action: "crm 이식 부품 목록(회고 6절)을 스크리너 스캐폴딩 시 conventions/스파인에 반영 — goldens 단일 출처/바이트 불변 DoD/문서-계약 3법칙 포함"
     owner: "Winston + Amelia"
