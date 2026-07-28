@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-24 (4-4 done — 공개점검·README·절차서, 에픽4 세션 몫 전결. 4-3 done — 대시보드 사양서, 시나리오 탭5 분리·Sally 라인 종결. 4-1b done — 계약 좁히기·오용 방지, 인계 부채 전종결. 4-1a done — 마트 조립·CLIENTNUM 조인·정규 스키마, 코드리뷰 파티 종결.
+# last_updated: 2026-07-24 (epic-4 done+회고 done — 실행 4스토리 전결, 본공연 전환 준비. 4-4 done — 공개점검·README·절차서, 에픽4 세션 몫 전결. 4-3 done — 대시보드 사양서, 시나리오 탭5 분리·Sally 라인 종결. 4-1b done — 계약 좁히기·오용 방지, 인계 부채 전종결. 4-1a done — 마트 조립·CLIENTNUM 조인·정규 스키마, 코드리뷰 파티 종결.
 # 이하 히스토리: 4-1 split→4-1a/4-1b [회고 B1, daria 승인], epic-4 in-progress, 4-1a ready-for-dev — 고객 마트 조립·CLIENTNUM 조인·정규 스키마. 이하 히스토리: epic-3 회고 done — A2→3-0 승격 최대성과, 미결 4-1 수렴 9건, 액션 B1~B8 등재. 3-4 create-story: ready-for-dev — 결론=분면 부호+접촉비율(D1), 코어 2D+risk_q 2차(D2), 동점0 반증(D3), 자체컷 가드 신설(AC6). 3-3 done/443 passed는 미커밋 working tree. epic-2 무기한 동결)
 # project: crm-targeting-lab
 # project_key: NOKEY
@@ -120,7 +120,8 @@ development_status:
   2-3-fit-summary-non-combination-boundary: backlog
   epic-2-retrospective: optional
 
-  epic-3: in-progress
+  # epic-3 status 표기 정정 2026-07-24(에픽4 회고): 전 스토리+회고 done — done으로 정정.
+  epic-3: done
   # 3-0 added 2026-07-22 (NOT from epics.md FRs): retro action A2 + story 3-1 external
   # review M3 together forced a decision epics.md never anticipated - the churn score
   # must be out-of-fold, and the probability used for money must be calibrated.
@@ -160,7 +161,9 @@ development_status:
   # 중대 발견 없음(에픽4 재계획 불필요). 리스크는 4-1 하중 — B1 분할 사전검토 선결. 상세: epic-3-retro-2026-07-23.md
   epic-3-retrospective: done
 
-  epic-4: in-progress
+  # epic-4 done 2026-07-24(회고 판정, daria 승인): 실행 대상 4스토리(4-1a/b·4-3·4-4) 전부 done.
+  # 4-2는 epic-2 동결 종속 blocked — 동결 해제 전까지 에픽 완결성을 막지 않는다. 상세: epic-4-retro-2026-07-24.md
+  epic-4: done
   # 4-1 split into 4-1a/4-1b (2026-07-23, epic-3 회고 B1 판정 — daria 승인): 4-1이 미결 부채
   # 9건 수렴점이라 3-3급 하중. 1-6a/b·3-3 선례대로 분할해 리뷰 폭증(John 교훈)을 예방한다.
   # 4-1a=디스크에 올바른 마트(조립 헬퍼+05_marts / CLIENTNUM 라벨 조인=함정4 방어 / 행수 보존 /
@@ -214,7 +217,7 @@ development_status:
   # 전면 보강(전 단계 의심 포인트·range 파라미터·표기 무시 대조). 397→401 passed, 마트·코드 불변.
   # 세션 몫 완결 — 남은 것: daria 절차서 실행(계정→워크북→퍼블리시→링크, 비블로킹) + 에픽4 회고.
   4-4-public-check-readme-tableau-publish: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
 # EXECUTION ORDER OVERRIDE (epic-1 retrospective, 2026-07-22):
 #   실행 순서는 에픽 번호 순이 아니다 -> epic-1 (done) -> epic-3 -> epic-2 -> epic-4.
@@ -288,3 +291,23 @@ action_items:
     action: "risk_quantile annex 화면 노출 감시 + SHAP!=인과 경고 화면 전달(A8 승계) — 종결(4-3): 사양서 금지 조항 3('탭·시트·파라미터 어느 형태로도 반입 금지', 파라미터는 rate·cost만) + A8 캡션 규약. 테스트 고정"
     owner: "Sally"
     status: done
+  - epic: 4
+    action: "퍼블리시 체인 실행 — 계정 확인(OQ-5)/워크북/퍼블리시/링크 기입 (docs/tableau-publish-runbook.md 0~6단계, 비블로킹)"
+    owner: "daria"
+    status: open
+  - epic: 4
+    action: "daria 환경 full pytest 1회(churn 포함) — 전체 스위트 수 확정, README 각주 갱신 여부 판단"
+    owner: "daria"
+    status: open
+  - epic: 4
+    action: "옵시디언 에픽4 미러 작성 (Epic DoD 미수행분)"
+    owner: "Paige"
+    status: open
+  - epic: 4
+    action: "본공연 실측 원료 결정(공시체계 DART/SEC/병행 + peer 정의) → 데이터 스파이크 착수 (본공연 크리티컬 패스)"
+    owner: "daria + Mary"
+    status: open
+  - epic: 4
+    action: "crm 이식 부품 목록(회고 6절)을 스크리너 스캐폴딩 시 conventions/스파인에 반영 — goldens 단일 출처/바이트 불변 DoD/문서-계약 3법칙 포함"
+    owner: "Winston + Amelia"
+    status: open
