@@ -176,7 +176,14 @@ development_status:
   # 360 passed(이 환경 churn 제외; xgboost 미설치라 daria 환경 기준선과 상이 — 스토리
   # Debug Log 참조). 오용 방지 표기는 4-1b 인계 유지. 커밋 8832c62(dev)·3a918d8(review fix).
   4-1a-customer-mart-assembly-schema: done
-  4-1b-contract-narrowing-misuse-prevention: backlog
+  # 4-1b create-story 2026-07-24: 인계 6건을 AC 7개로 수렴 — AC1 랭킹 계층 3축 CLIENTNUM
+  # 인덱스 요구(구item1, 부분 가드→전면 가드 승격; expected_saving 계약은 불변), AC2 random_baseline
+  # 모집단 정체성(구item4), AC3 빈 캠페인 메시지 원인 명명(구item5), AC4 campaign_selected 정의
+  # 고정+컬럼 비탑재(D1: 예산=시나리오 입력, 임의 config화는 세탁), AC5 스키마 용도/금지 칸(+19%
+  # 방어; 뷰 제외는 4-3 소관 층 분리), AC6 customer_value 호출부 sentinel(1-2 인계 절반 종결),
+  # AC7 세션 리포트 규약 ③+① 혼합(D2: 06 stage·reports/ 비도입). 순수 경화 — 마트 값 불변이 DoD.
+  # 문서 체크리스트 DoD 첫 적용(에픽1 A3).
+  4-1b-contract-narrowing-misuse-prevention: review
   4-2-ltv-demo-mart-schema: backlog
   4-3-dashboard-specification: backlog
   4-4-public-check-readme-tableau-publish: backlog

@@ -76,7 +76,7 @@ import math
 
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_bool_dtype, is_numeric_dtype
+from pandas.api.types import is_bool_dtype, is_integer_dtype, is_numeric_dtype
 
 from crm.config import COST_PER_CONTACT, RANDOM_BASELINE_DRAWS, RANDOM_SEED
 
@@ -183,6 +183,46 @@ def _require_series(candidate: object, axis_name: str) -> None:
         )
 
 
+def _require_clientnum_index(series: pd.Series, axis_name: str) -> None:
+    """Require the axis to CARRY its customer identity (story 4-1b, 함정4).
+
+    Trap 4's lesson, learned twice: the saving axis does not carry identity on
+    its own, so a positional combine of two differently-ordered frames produced
+    a total of 1,994,740.8 (+37.2%) with nothing raised - under a RangeIndex
+    AND under the mart shape alike (story 3-3 code review refuted the earlier
+    "effective from 4-1" claim). The only full defence is to refuse, at this
+    layer's entrance, any axis that does not name its rows: the index must BE
+    CLIENTNUM. A bare RangeIndex axis is no longer expressible here - callers
+    join on CLIENTNUM first (`crm/marts/customers.py` is the committed example).
+
+    Integer dtype is part of the requirement for the reason the mart rejects a
+    float join key: 708082083 == 708082083.0 compares equal while a float key
+    can hide rounding-split identities (story 4-1a code review E2).
+    """
+    if series.index.name != _CLIENTNUM_AXIS:
+        raise ValueError(
+            f"target_priority and its neighbours need the {axis_name} axis to "
+            f"be indexed BY {_CLIENTNUM_AXIS} (got index name "
+            f"{series.index.name!r}). A bare positional index cannot prove "
+            f"which customer each row belongs to - measured, that misalignment "
+            f"inflated the campaign total by 37.2% with nothing raised. Build "
+            f"the axes by joining on {_CLIENTNUM_AXIS} (the mart assembly in "
+            f"crm/marts/customers.py is the committed example), do not rename "
+            f"an unjoined index."
+        )
+    # An EMPTY axis is deliberately let through to `_validate_axis`, which
+    # names emptiness as the failure - an empty index has no meaningful dtype
+    # (pandas gives it object), and "expected an integer dtype" would misdiagnose
+    # a missing population as a key-typing problem.
+    if len(series) > 0 and not is_integer_dtype(series.index):
+        raise ValueError(
+            f"the {axis_name} axis carries a {_CLIENTNUM_AXIS} index of dtype "
+            f"'{series.index.dtype}', expected an integer dtype. A float "
+            f"customer key can hide rounding-split identities (story 4-1a "
+            f"code review) - fix the join key upstream rather than casting."
+        )
+
+
 def _validate_axis(series: pd.Series, axis_name: str, *, non_negative: bool) -> np.ndarray:
     """Reject inputs the sort would silently accept.
 
@@ -249,9 +289,10 @@ def _validate_alignment(
     `Index.equals` returns True and every guard in `simulate.py` passes -
     measured, that misalignment inflated the total by 37% with nothing raised.
     Because `CLIENTNUM` arrives here as a sort key, its VALUES can be compared
-    against the index labels. The guard is partial by design and says so: it
-    only fires when the index is itself CLIENTNUM-shaped, which is how the mart
-    (story 4-1) will carry it.
+    against the index labels. Under 3-3 this guard was partial (it fired only
+    when the index happened to be CLIENTNUM-shaped); since 4-1b the index is
+    REQUIRED to be CLIENTNUM (`_require_clientnum_index`), so the comparison
+    always runs and a positionally-combined pair cannot reach the sort.
     """
     if len(expected_saving) != len(value) or len(expected_saving) != len(clientnum):
         raise ValueError(
@@ -290,7 +331,10 @@ def _validate_alignment(
             f"tie-break, so duplicates would leave the order undetermined for "
             f"exactly the customers the earlier keys could not separate."
         )
-    if expected_saving.index.name == _CLIENTNUM_AXIS and not np.array_equal(
+    # Unconditional since 4-1b: `_require_clientnum_index` guarantees the index
+    # IS CLIENTNUM, so this comparison can never be skipped - the guard that was
+    # "partial by design" under 3-3 is now the full-time trap-4 tripwire.
+    if not np.array_equal(
         expected_saving.index.to_numpy(), clientnum.to_numpy()
     ):
         raise ValueError(
@@ -321,7 +365,13 @@ def target_priority(
             re-weighted). Used ONLY as a tie-break key. Must be non-negative;
             see the module docstring for why that is checked here.
         clientnum: Customer identifier, the final tie-break. Must be unique,
-            and must agree with the index when the index is itself CLIENTNUM.
+            and must agree with the shared CLIENTNUM index.
+
+    All three axes must be indexed BY ``CLIENTNUM`` (integer dtype) - a bare
+    ``RangeIndex`` is refused since story 4-1b, because a positionally-combined
+    axis is exactly the trap-4 defect (+37.2%, measured) this layer exists to
+    stop. Join on CLIENTNUM first; ``crm/marts/customers.py`` is the committed
+    example.
 
     Returns:
         ``Series[int64]`` named :data:`PRIORITY_COLUMN`, indexed exactly like
@@ -329,15 +379,22 @@ def target_priority(
         first.
 
     Raises:
-        ValueError: on a non-Series input, an empty axis, a non-numeric axis,
-            missing or non-finite entries, a negative customer value,
-            mismatched lengths, indexes or index dtypes, a duplicated customer
-            index, duplicated CLIENTNUM values, or a CLIENTNUM column that
-            disagrees with a CLIENTNUM index.
+        ValueError: on a non-Series input, an axis not indexed by an integer
+            CLIENTNUM, an empty axis, a non-numeric axis, missing or non-finite
+            entries, a negative customer value, mismatched lengths, indexes or
+            index dtypes, a duplicated customer index, duplicated CLIENTNUM
+            values, or a CLIENTNUM column that disagrees with the CLIENTNUM
+            index.
     """
     _require_series(expected_saving, _SAVING_AXIS)
     _require_series(value, _VALUE_AXIS)
     _require_series(clientnum, _CLIENTNUM_AXIS)
+    # Identity before pairing before contents (4-1b): an axis that cannot name
+    # its customers fails here, so the alignment checks below always run over
+    # label-joined axes and the column-vs-index comparison is never vacuous.
+    _require_clientnum_index(expected_saving, _SAVING_AXIS)
+    _require_clientnum_index(value, _VALUE_AXIS)
+    _require_clientnum_index(clientnum, _CLIENTNUM_AXIS)
     _validate_alignment(expected_saving, value, clientnum)
     _validate_axis(expected_saving, _SAVING_AXIS, non_negative=False)
     _validate_axis(value, _VALUE_AXIS, non_negative=True)
@@ -552,6 +609,11 @@ def random_baseline(
             outside ``0..len(expected_saving)``.
     """
     _require_series(expected_saving, _SAVING_AXIS)
+    # Population identity (4-1b, 구item4): the baseline's whole point is that it
+    # draws from the SAME population the campaign targeted. A bare Series could
+    # be any subset or any join - requiring the CLIENTNUM index makes the
+    # population auditable by construction.
+    _require_clientnum_index(expected_saving, _SAVING_AXIS)
     _validate_axis(expected_saving, _SAVING_AXIS, non_negative=False)
     # Type-check before the range checks: `0 <= 2.5 <= n` and `3.7 > 0` both
     # pass, and the failure then surfaces from numpy naming neither the argument
@@ -649,8 +711,9 @@ def multiple_over_random(selection: BudgetSelection, baseline: RandomBaseline) -
     Raises:
         ValueError: on a non-``BudgetSelection``/``RandomBaseline`` argument,
             a baseline drawn at a different contact count than the selection
-            bought, or a ``baseline.mean_total`` that is not strictly
-            positive.
+            bought, an EMPTY campaign (0 contacts bought - the message names
+            ``binding_constraint`` rather than blaming the baseline), or a
+            ``baseline.mean_total`` that is not strictly positive.
     """
     if not isinstance(selection, BudgetSelection):
         raise ValueError(
@@ -672,6 +735,19 @@ def multiple_over_random(selection: BudgetSelection, baseline: RandomBaseline) -
             f"that answers no question - measured, an 8,587-contact selection "
             f"over a 100-contact baseline printed x99 with nothing raised. "
             f"Re-draw the baseline with n_contacts={selection.selected_count}."
+        )
+    # Before judging the denominator, name the EMPTY CAMPAIGN (story 4-1b, 구
+    # item5). An empty selection's size-0 baseline sums to a structural 0.0, and
+    # the earlier order reported "a multiple needs a positive baseline" - true
+    # arithmetic, wrong diagnosis. The actionable fact is that ZERO customers
+    # were contacted, and `binding_constraint` already knows why.
+    if selection.selected_count == 0:
+        raise ValueError(
+            f"no multiple exists for an empty campaign: the selection bought 0 "
+            f"contacts (binding constraint: '{selection.binding_constraint}'). "
+            f"A ratio of two empty campaigns is not a performance figure - fix "
+            f"the budget or the population before asking how much better "
+            f"targeting is."
         )
     if not baseline.mean_total > 0.0:
         raise ValueError(

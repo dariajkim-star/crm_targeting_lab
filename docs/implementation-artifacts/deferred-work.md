@@ -90,6 +90,9 @@
     못박았다** — `test_a_monotone_reweighting_is_invisible_here_and_this_file_says_so`가 `log1p`는
     순위를 못 바꾸므로 **이 모듈로는 잡을 수 없음**을 단언한다. 단조 재가중은 AD-11 구조 가드 소관.
   - **4-1**: 마트의 원척도 컬럼이 `customer_value()` 결과와 동일한가
+    → **해소(4-1b)**: `test_the_mart_value_column_is_the_customer_value_output_verbatim`이
+    호출부 sentinel(CLIENTNUM 키 매핑, 값 동일성 방식 — 3-2 계열)로 마트 컬럼 == 함수 출력을
+    고정. `*0.02`·`log1p`(단조 포함) 전부 KILL. **1-2 인계의 남은 절반(호출부 재가중) 종결.**
 
 ## Deferred from: story 1-7 (SHAP 요인·액션, 2026-07-21)
 
@@ -445,6 +448,10 @@ AC로 승격시키지 않았다 — 3-0이 "새 요구사항을 만들지 않는
   06 stage를 만들어 마트 경로로 승격(4-1이 어차피 할 일) ②`scratch/` 대신 커밋되는
   `reports/` 디렉터리 도입 ③세션 리포트는 원래 재현 불가임을 규약으로 명시. **4-1이 이 경로를
   커밋된 코드로 만들 때 자연 해소되므로 그때까지 미룬다.**
+  → **종결(4-1b, D2)**: ③+①의 혼합을 규약으로 확정 — 공식 수치의 집은 마트+골든 테스트(4-1a가
+  분면 분포·컷·총합을 커밋된 테스트로 고정), 마트에서 검산 불가능한 세션 수치는 "호출 순서 명시 +
+  세션 산출 라벨(재현 각주: seed·draws·호출 체인)". 06 stage·`reports/`는 비도입(AD-2 유일 writer;
+  실수요는 4-3 재검토). `docs/specs/spec-crm-targeting-lab/conventions.md` 10번에 명문화.
 
 ## Deferred from: story 3-4 (민감도 분석과 결론 반전 구간, 2026-07-23)
 
@@ -485,7 +492,14 @@ painpoint 재정의(재무 워싱 스크리너 — crm은 리허설) 후 파티�
   `expected_saving` 출력(RangeIndex)이 비순응이 된다. 그때까지 이 계층에 함정 4 기계적 보호는
   없으며(문서는 정정 완료), 4-1의 CLIENTNUM 조인이 유일한 방어다. **스크리너 이식 관점 메모**:
   본공연 데이터는 조인이 훨씬 많아 이 계약이 더 중요해진다 — 4-1에서 연습할 가치가 커졌다.
+  → **해소(4-1b AC1)**: `_require_clientnum_index`가 세 축 모두에 CLIENTNUM 명명 + 정수 dtype
+  인덱스를 요구 — RangeIndex 표현 불가능화. 3-3의 부분 가드(조건부 대조)는 전면 가드로 승격.
+  `expected_saving` 시그니처·출력 계약은 불변(좁힌 것은 랭킹 계층 입구뿐).
 - **`random_baseline` 모집단 정체성 (구 item 4)** — 통합안이 배수 경로 오용은 닫았으나 이 함수
   자체는 여전히 맨 Series를 받는다. 마트가 단일 조인 지점이 되는 4-1에서 위 계약과 함께 처리.
+  → **해소(4-1b AC2)**: 동일 인덱스 요건 적용 — 기준선 모집단이 축의 정체성으로 감사 가능.
 - **`budget=0` 빈 캠페인 메시지 (구 item 5)** — 만장일치 nit. "기준선이 양수여야 한다"가 아니라
   "접촉 인원이 0"을 말해야 한다. 4-1에서 배제/빈 캠페인 UX 설계 시 함께.
+  → **해소(4-1b AC3)**: `multiple_over_random`이 분모 판정 전에 빈 캠페인을 명명하고
+  `binding_constraint`를 인용(원인 3종 구분 테스트 고정). `campaign_selected`는 컬럼 비탑재 +
+  정의만 스키마 고정(4-1b D1 — 공식 단일 예산 부재, 예산=시나리오 입력).

@@ -325,6 +325,78 @@ def test_mart_columns_and_dtypes_match_the_schema_doc() -> None:
         )
 
 
+# --- Story 4-1b: the schema doc is the misuse-prevention layer ---------------
+
+
+def _schema_row(name: str) -> str:
+    """The one table row describing column `name`, from the schema doc."""
+    for line in SCHEMA_DOC.read_text(encoding="utf-8").splitlines():
+        if line.startswith(f"| `{name}`"):
+            return line
+    raise AssertionError(f"schema doc has no table row for column '{name}'")
+
+
+def test_schema_doc_carries_the_misuse_prohibitions() -> None:
+    """4-1b AC5: the +19% column swap has no guard in a BI dropdown - the
+    schema table's 용도/금지 cell is the only defence layer that reaches a
+    consumer who never reads code. Both prohibitions are contract, not prose."""
+    text = SCHEMA_DOC.read_text(encoding="utf-8")
+
+    assert "용도/금지" in text, "schema table lost its usage/prohibition column"
+    assert "금액 산식 사용 금지" in _schema_row("churn_score")
+    assert "+19.0%" in _schema_row("churn_score")
+    assert "분면 컷 재계산에 사용 금지" in _schema_row("churn_prob_calibrated")
+
+
+def test_schema_doc_pins_the_campaign_selected_definition() -> None:
+    """4-1b AC4 (AD-12): the definition is owned HERE even though the column is
+    deliberately not shipped - selection is a function of a budget, and no
+    official single budget exists, so materialising the column would launder a
+    scenario input into a fact. The doc must carry definition AND the reason."""
+    text = SCHEMA_DOC.read_text(encoding="utf-8")
+
+    assert "`campaign_selected`" in text
+    assert "select_within_budget" in text
+    assert "비탑재" in text
+    assert "expected_saving > 0" in text
+
+
+def test_the_mart_value_column_is_the_customer_value_output_verbatim(monkeypatch) -> None:
+    """4-1b AC6 (1-2 인계 절반): call-site reweighting protection.
+
+    `expected_saving`'s internal sentinel test (3-2) pinned the FUNCTION, but a
+    call site writing `customer_value(df) * 0.02` passes the AD-11 structure
+    guard (no source-column reach) and every function-level test. This is the
+    first committed call site, so the sentinel lands here: patch the function,
+    assert the mart column carries the sentinel EXACTLY. Value equality (not
+    tie-order, 3-3's variant) kills monotone reweighting too - `log1p` changes
+    the values even where it preserves every rank.
+    """
+    import crm.marts.customers as mart_module
+
+    # Keyed BY CLIENTNUM, not by position: the fixture shuffles each source, so
+    # a positional sentinel would scramble the pairing this test depends on.
+    # Distinct, non-negative, non-uniform: *0.02 / log1p / +1 all move at least
+    # one of these to a value the exact-equality assert will catch.
+    sentinel = {503: 7.5, 101: 1250.0, 407: 3.25, 202: 991.0, 306: 88.0, 605: 40404.5}
+
+    def sentinel_customer_value(df):
+        return pd.Series([sentinel[c] for c in df.index], index=df.index, dtype=float)
+
+    monkeypatch.setattr(mart_module, "customer_value", sentinel_customer_value)
+
+    mart = mart_module.build_customer_mart(*_sources())
+
+    ordered = sorted(_CLIENTNUMS)
+    expected = pd.Series(
+        [sentinel[c] for c in ordered],
+        index=pd.Index(ordered, name="CLIENTNUM"),
+        name="customer_value",
+        dtype=float,
+    )
+    pd.testing.assert_series_equal(mart["customer_value"], expected)
+
+
 # --- AC5: artifact_id identity gate (frame-side branches, no model needed) ----
 
 

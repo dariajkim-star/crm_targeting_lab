@@ -283,6 +283,54 @@ def test_an_empty_population_is_refused():
         target_priority(saving, value, clientnum)
 
 
+# --- Story 4-1b: the CLIENTNUM index is REQUIRED, not merely compared --------
+
+
+def test_a_range_index_axis_is_no_longer_expressible():
+    """The trap-4 contract narrowing (구item1): a positionally-built axis fails
+    at the door. Measured, a RangeIndex combine inflated the total to
+    1,994,740.8 (+37.2%) with nothing raised - under 3-3's partial guard AND
+    under the mart shape alike. Since 4-1b the axes must carry their customer
+    identity, so that combine cannot reach the sort at all."""
+    saving = pd.Series([10.0, 30.0], dtype=float, name="expected_saving")  # RangeIndex
+    value = pd.Series([100.0, 300.0], dtype=float, name="customer_value")
+    clientnum = pd.Series([1, 2], dtype="int64", name="CLIENTNUM")
+
+    with pytest.raises(ValueError, match="indexed BY CLIENTNUM"):
+        target_priority(saving, value, clientnum)
+
+
+def test_a_renamed_but_float_index_is_refused():
+    """Naming the index CLIENTNUM is not enough - a float key can hide
+    rounding-split identities (4-1a code review E2, same rule at this layer)."""
+    index = pd.Index([1.0, 2.0], name="CLIENTNUM")
+    saving = pd.Series([10.0, 30.0], index=index, dtype=float)
+    value = pd.Series([100.0, 300.0], index=index, dtype=float)
+    clientnum = pd.Series([1, 2], index=index, dtype="int64")
+
+    with pytest.raises(ValueError, match="integer dtype"):
+        target_priority(saving, value, clientnum)
+
+
+def test_the_random_baseline_requires_the_same_population_identity():
+    """구item4: the baseline draws from a POPULATION, and a bare Series cannot
+    prove which one. The CLIENTNUM index makes it auditable by construction."""
+    saving = pd.Series([10.0, 30.0, -2.0], dtype=float)  # RangeIndex
+
+    with pytest.raises(ValueError, match="indexed BY CLIENTNUM"):
+        random_baseline(saving, n_contacts=1, draws=8, seed=RANDOM_SEED)
+
+
+def test_select_within_budget_inherits_the_index_requirement(distinct):
+    """The budget path goes through target_priority, so the narrowing holds
+    there too - pinned so a future refactor cannot quietly bypass it."""
+    saving, value, clientnum = distinct
+    bare = saving.reset_index(drop=True)
+
+    with pytest.raises(ValueError, match="indexed BY CLIENTNUM"):
+        select_within_budget(bare, value.reset_index(drop=True), clientnum.reset_index(drop=True), budget=10.0)
+
+
 def test_a_duplicated_customer_is_refused():
     saving, value, clientnum = _population([5.0, 6.0], [10.0, 20.0], [7, 7])
 
@@ -762,16 +810,56 @@ def test_a_bare_float_numerator_is_no_longer_accepted(distinct):
         multiple_over_random(result.selected_total, baseline)
 
 
-def test_the_multiple_is_refused_when_the_baseline_is_not_positive():
-    """A ratio against a zero or negative denominator is not a multiple.
+def test_an_empty_campaign_is_named_as_the_cause_not_the_baseline():
+    """Story 4-1b (구item5): the diagnosis must be "0 contacts", not "bad
+    denominator".
 
-    An all-negative population selects nobody, its size-0 baseline sums to a
-    structural 0.0, and a 0/0 read as "x1.0 better" would be the lie this
-    refuses.
+    An all-negative population selects nobody and its size-0 baseline sums to a
+    structural 0.0. The earlier order reported "a multiple needs a positive
+    baseline" - arithmetically true, diagnostically wrong: the actionable fact
+    is the EMPTY CAMPAIGN, and `binding_constraint` already knows why it is
+    empty. The message must carry both.
     """
     saving, value, clientnum = _population([-1.0, -2.0, -3.0], [10.0, 20.0, 30.0], [1, 2, 3])
     result = select_within_budget(saving, value, clientnum, budget=1_000_000.0)
     baseline = random_baseline(saving, n_contacts=result.selected_count, draws=8, seed=RANDOM_SEED)
+
+    with pytest.raises(ValueError, match="0 contacts.*no_positive_candidates"):
+        multiple_over_random(result, baseline)
+
+
+@pytest.mark.parametrize(
+    ("budget", "constraint_word"),
+    [
+        pytest.param(0.0, "zero_budget", id="zero_budget"),
+        pytest.param(COST_PER_CONTACT - 0.01, "budget_below_one_contact", id="below_one_contact"),
+    ],
+)
+def test_the_empty_campaign_message_names_each_binding_constraint(
+    distinct, budget, constraint_word
+):
+    """The three ways of being empty must stay distinguishable in the message."""
+    saving, value, clientnum = distinct
+    result = select_within_budget(saving, value, clientnum, budget=budget)
+    baseline = random_baseline(saving, n_contacts=0, draws=8, seed=RANDOM_SEED)
+
+    with pytest.raises(ValueError, match=constraint_word):
+        multiple_over_random(result, baseline)
+
+
+def test_the_multiple_is_refused_when_the_baseline_is_not_positive():
+    """A ratio against a zero or negative denominator is not a multiple.
+
+    Distinct from the empty-campaign case since 4-1b: here the campaign DID buy
+    a contact (the one positive customer), but the whole-population baseline
+    mean is negative, so the denominator is the genuine problem and the message
+    may say so.
+    """
+    saving, value, clientnum = _population([10.0, -50.0, -60.0], [10.0, 20.0, 30.0], [1, 2, 3])
+    result = select_within_budget(saving, value, clientnum, budget=1_000_000.0)
+    assert result.selected_count == 1  # the campaign is NOT empty
+    baseline = random_baseline(saving, n_contacts=1, draws=64, seed=RANDOM_SEED)
+    assert baseline.mean_total < 0.0  # mean of {10, -50, -60} draws
 
     with pytest.raises(ValueError, match="positive baseline"):
         multiple_over_random(result, baseline)
