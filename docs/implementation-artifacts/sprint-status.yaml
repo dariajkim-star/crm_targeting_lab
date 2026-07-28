@@ -1,5 +1,6 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-23 (4-1 split→4-1a/4-1b [회고 B1, daria 승인], epic-4 in-progress, 4-1a ready-for-dev — 고객 마트 조립·CLIENTNUM 조인·정규 스키마. 이하 히스토리: epic-3 회고 done — A2→3-0 승격 최대성과, 미결 4-1 수렴 9건, 액션 B1~B8 등재. 3-4 create-story: ready-for-dev — 결론=분면 부호+접촉비율(D1), 코어 2D+risk_q 2차(D2), 동점0 반증(D3), 자체컷 가드 신설(AC6). 3-3 done/443 passed는 미커밋 working tree. epic-2 무기한 동결)
+# last_updated: 2026-07-24 (4-1a done — 마트 조립·CLIENTNUM 조인·정규 스키마, 코드리뷰 파티 종결.
+# 이하 히스토리: 4-1 split→4-1a/4-1b [회고 B1, daria 승인], epic-4 in-progress, 4-1a ready-for-dev — 고객 마트 조립·CLIENTNUM 조인·정규 스키마. 이하 히스토리: epic-3 회고 done — A2→3-0 승격 최대성과, 미결 4-1 수렴 9건, 액션 B1~B8 등재. 3-4 create-story: ready-for-dev — 결론=분면 부호+접촉비율(D1), 코어 2D+risk_q 2차(D2), 동점0 반증(D3), 자체컷 가드 신설(AC6). 3-3 done/443 passed는 미커밋 working tree. epic-2 무기한 동결)
 # project: crm-targeting-lab
 # project_key: NOKEY
 # tracking_system: file-system
@@ -168,7 +169,13 @@ development_status:
   #   구item4 / budget=0 빈 캠페인 UX 구item5 / 마트 오용 방지 표기 churn_score vs churn_prob_calibrated
   #   +19% / customer_value 호출부 재가중 보호 1-2 인계 / 세션 리포트 커밋 경로 06|reports 3-2F7·3-3재발).
   # 4-2는 epic-2(동결) 산출 의존이라 4-1과 무관하게 blocked. 상세: epic-3-retro-2026-07-23.md §6 B1~B5.
-  4-1a-customer-mart-assembly-schema: review
+  # 4-1a dev+review done 2026-07-24: CLIENTNUM 라벨 조인 마트 조립(함정4 방어 실증 —
+  # 총합 1,454,088 정답 재현, 위치결합 +37.2% 회피를 행동 테스트로 고정). 3레이어+파티
+  # 리뷰 전건 처분(P1 조인 키 위생 3건: NaN 거부/키 dtype 강제-거부이지 캐스팅 아님/
+  # segment_id dtype, P2 골든 분면 단언+픽스처 분리, P3 청소 3건). B1·B5 기각.
+  # 360 passed(이 환경 churn 제외; xgboost 미설치라 daria 환경 기준선과 상이 — 스토리
+  # Debug Log 참조). 오용 방지 표기는 4-1b 인계 유지. 커밋 8832c62(dev)·3a918d8(review fix).
+  4-1a-customer-mart-assembly-schema: done
   4-1b-contract-narrowing-misuse-prevention: backlog
   4-2-ltv-demo-mart-schema: backlog
   4-3-dashboard-specification: backlog

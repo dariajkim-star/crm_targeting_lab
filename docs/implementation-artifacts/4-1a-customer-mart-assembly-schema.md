@@ -4,7 +4,7 @@ baseline_commit: a08106b910eb889aeaf883c3d75432fb86e14f59
 
 # Story 4.1a: 고객 마트 조립·CLIENTNUM 조인·정규 스키마
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
