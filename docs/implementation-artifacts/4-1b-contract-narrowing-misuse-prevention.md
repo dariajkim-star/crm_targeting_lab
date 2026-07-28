@@ -4,7 +4,7 @@ baseline_commit: 29449a9630d0f8096ddf08ee9833a8a0138bb0a5
 
 # Story 4.1b: 계약 좁히기·오용 방지 — 아티팩트 주변 경화
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -179,9 +179,27 @@ claude-opus-5 (Claude Code, dev-story workflow)
 - `docs/implementation-artifacts/deferred-work.md` — 종결 주석 5곳(1-2 인계·F7·구item1/4/5)
 - `docs/implementation-artifacts/sprint-status.yaml` — 상태 갱신
 
+### Senior Developer Review (AI) — 2026-07-24
+
+**방식**: 3레이어 병렬(Blind/Edge/Auditor) → code-review-crew 파티, daria 전권 위임 판정.
+**Auditor 판정**: AC1~AC7 전부 충족, 순수 경화 무결(마트 CSV·골든 무변경), committed 호출부 전수 순응, 범위 침범 0.
+
+**핵심 쟁점 판정 — "표현 불가능" 서술 (Blind High + Edge High 2건 vs Auditor F5)**:
+Edge가 실측한 두 우회로 — ①미조인 인덱스 개명(입구 통과) ②위치결합 후 `set_index`(트립와이어까지 통과) — 는 사실. 판정: **결함이 아니라 과장** — ①은 무조건화된 인덱스-컬럼 트립와이어(2단 방어)가 잡고, ②는 정체성을 원천에서 일관되게 잘못 찍은 결합이라 **어떤 라벨 계약도 못 잡는 설계 한계**(위조 여권은 검문소 문제가 아님 — Vex). 처분: 서술 정직화(docstring·deferred-work) + **한계 단언 테스트**(3-3 "단조 재가중 불가시" 선례) + 트립와이어 실증 테스트. 조인이 4-1a 마트 조립 단일 지점에 있는 것이 진짜 방어라는 구조를 명문화.
+
+**처분 적용(전건 해소, 375 passed)**:
+- [x] **정직화(P2)**: `_require_clientnum_index` docstring "잡는 것/못 잡는 것" 명시, `_validate_alignment` 전제 소유권(호출자) 명시, 한계 단언 테스트 + 개명→트립와이어 실증 테스트 신설. 37%→37.2% 통일.
+- [x] **가드 보강(P2, Edge Med 3건)**: 빈 축 전체 스킵(이름 검사 오진 해소)·인덱스 NA 거부(Int64 오진 해소)·`clientnum` 컬럼 정수 강제·`random_baseline` 인덱스 유일성(팬아웃 분모 왜곡 차단).
+- [x] **테스트 강화(P2, Blind Med 3건)**: positive-baseline 결정론화(`RandomBaseline` 직접 생성 — 시드 우연 제거)·빈 캠페인 match "0 contacts.*원인" 강화·campaign_selected 절-한정 검사(`_campaign_selected_section`)·금지 문구 **칸 위치** 검사(`_prohibition_cell`, cells==7 단언).
+- [x] **문서(P3, Auditor F1~F3)**: 스키마 "3-2 실측" 출처 복원·공존 주의 복원, 2,812→1,456,900/1,454,088 출처 표기 + D1 라벨 정정(3-3 D1 vs 4-1b D1 구분), 오류 메시지 중립화("the campaign ranking layer").
+- **기각**: sentinel dict KeyError(P4, 픽스처 로컬 상수)·파서 파이프 취약(현재 무해, 기록만)·expected_saving 호출부 sentinel(실데이터 골든 총합 1,454,088이 앵커)·정수 dtype 근거 문장 재작성(하나로 통합됨).
+- **이연(deferred-work 등재)**: `RandomBaseline` 모집단 정체성 기록(API 변경 — 4-3 실수요 시)·scratch 재현 스크립트 구계약 파손 각주(다음 리포트 갱신 시).
+- **F4**: File List "신규 파일 0"은 코드 기준(스토리 문서 자신 제외) — 여기 명시로 정정.
+
 ### Change Log
 
 - 2026-07-24: 4-1b 구현 — 랭킹 계층 CLIENTNUM 인덱스 계약(함정4 전면 방어), 빈 캠페인 원인 명명, campaign_selected 정의 고정(컬럼 비탑재 D1), 스키마 용도/금지 칸(+19% 방어), customer_value 호출부 sentinel(1-2 인계 종결), 세션 리포트 규약(D2). 370 passed, 마트 바이트 불변.
+- 2026-07-24: 코드리뷰(3레이어+파티) 반영 — "표현 불가능" 정직화(2단 방어+한계 단언 테스트), 가드 보강 4건(NA 인덱스·컬럼 dtype·baseline 유일성·빈 축 오진), 테스트 강화 4건, 문서 정정 3건. 370→375 passed(회귀 0), 마트 바이트 불변 유지.
 
 ---
 

@@ -492,14 +492,29 @@ painpoint 재정의(재무 워싱 스크리너 — crm은 리허설) 후 파티�
   `expected_saving` 출력(RangeIndex)이 비순응이 된다. 그때까지 이 계층에 함정 4 기계적 보호는
   없으며(문서는 정정 완료), 4-1의 CLIENTNUM 조인이 유일한 방어다. **스크리너 이식 관점 메모**:
   본공연 데이터는 조인이 훨씬 많아 이 계약이 더 중요해진다 — 4-1에서 연습할 가치가 커졌다.
-  → **해소(4-1b AC1)**: `_require_clientnum_index`가 세 축 모두에 CLIENTNUM 명명 + 정수 dtype
-  인덱스를 요구 — RangeIndex 표현 불가능화. 3-3의 부분 가드(조건부 대조)는 전면 가드로 승격.
-  `expected_saving` 시그니처·출력 계약은 불변(좁힌 것은 랭킹 계층 입구뿐).
+  → **해소(4-1b AC1, 코드리뷰 정직화 포함)**: `_require_clientnum_index`가 세 축 모두에 CLIENTNUM
+  명명 + 정수 dtype + NA 없는 인덱스를 요구(맨 RangeIndex는 입구 거부), 3-3의 부분 가드(조건부
+  대조)는 전면 트립와이어로 승격. **방어는 2단이고 한계가 있다**(4-1b 코드리뷰): 미조인 인덱스를
+  개명하면 입구는 통과하나 실 CLIENTNUM 컬럼과의 트립와이어에 걸리고, **정체성을 원천에서 일관되게
+  잘못 찍은 결합(위치결합 후 set_index)은 어떤 라벨 계약도 못 잡는다** — 그래서 조인은 4-1a 마트
+  조립 단일 지점에 있다. 이 한계는 테스트가 명시적으로 단언한다
+  (`test_a_fully_self_consistent_rename_is_beyond_this_guard_and_this_file_says_so`, 3-3 한계 단언
+  선례). `expected_saving` 시그니처·출력 계약은 불변(좁힌 것은 랭킹 계층 입구뿐).
 - **`random_baseline` 모집단 정체성 (구 item 4)** — 통합안이 배수 경로 오용은 닫았으나 이 함수
   자체는 여전히 맨 Series를 받는다. 마트가 단일 조인 지점이 되는 4-1에서 위 계약과 함께 처리.
-  → **해소(4-1b AC2)**: 동일 인덱스 요건 적용 — 기준선 모집단이 축의 정체성으로 감사 가능.
+  → **부분 해소(4-1b AC2)**: 동일 인덱스 요건 + 인덱스 유일성 검사(팬아웃 분모 왜곡 차단) 적용 —
+  축이 모집단을 **명명**하게 됐다. **남는 절반(4-1b 코드리뷰 이연)**: `RandomBaseline` 결과 객체가
+  모집단 정체성을 기록하지 않아, 같은 크기의 **다른** 모집단에서 뽑은 기준선으로
+  `multiple_over_random`을 호출해도 잡히지 않는다. 닫으려면 dataclass에 모집단 지문(CLIENTNUM 집합
+  해시 등)을 싣고 selection과 대조해야 함 — API 변경이라 실수요(4-3 시나리오 뷰) 시점에 처리.
 - **`budget=0` 빈 캠페인 메시지 (구 item 5)** — 만장일치 nit. "기준선이 양수여야 한다"가 아니라
   "접촉 인원이 0"을 말해야 한다. 4-1에서 배제/빈 캠페인 UX 설계 시 함께.
   → **해소(4-1b AC3)**: `multiple_over_random`이 분모 판정 전에 빈 캠페인을 명명하고
   `binding_constraint`를 인용(원인 3종 구분 테스트 고정). `campaign_selected`는 컬럼 비탑재 +
   정의만 스키마 고정(4-1b D1 — 공식 단일 예산 부재, 예산=시나리오 입력).
+
+- **scratch 재현 스크립트 3종이 4-1b 계약으로 파손 (4-1b 코드리뷰 기록)** — `scratch/run_priority_3_3.py`
+  등(gitignore 대상)이 RangeIndex 프레임으로 `target_priority`/`random_baseline`을 호출하므로 재실행
+  시 즉시 ValueError. `priority-report-3-3.md`의 배수·곡선 수치 자체는 구계약 하에서 유효하게 산출된
+  세션 수치(conventions 10번 라벨 대상)이며, **재현하려면 CLIENTNUM 인덱스로 축을 세워야 한다** —
+  리포트 본문의 호출 순서 각주가 이 전제를 담도록 다음 리포트 갱신 시 반영.

@@ -49,6 +49,7 @@ from crm.campaign.priority import (
     NO_POSITIVE_CANDIDATES,
     POSITIVITY_BOUND,
     PRIORITY_COLUMN,
+    RandomBaseline,
     SELECTED_COLUMN,
     ZERO_BUDGET,
     multiple_over_random,
@@ -325,10 +326,80 @@ def test_select_within_budget_inherits_the_index_requirement(distinct):
     """The budget path goes through target_priority, so the narrowing holds
     there too - pinned so a future refactor cannot quietly bypass it."""
     saving, value, clientnum = distinct
-    bare = saving.reset_index(drop=True)
+    bare_saving = saving.reset_index(drop=True)
+    bare_value = value.reset_index(drop=True)
+    bare_clientnum = clientnum.reset_index(drop=True)
 
     with pytest.raises(ValueError, match="indexed BY CLIENTNUM"):
-        select_within_budget(bare, value.reset_index(drop=True), clientnum.reset_index(drop=True), budget=10.0)
+        select_within_budget(bare_saving, bare_value, bare_clientnum, budget=10.0)
+
+
+def test_a_renamed_unjoined_index_is_caught_by_the_tripwire():
+    """Stage two of the defence: naming a RangeIndex "CLIENTNUM" passes the
+    entrance guard (name + integer dtype both hold), and the unconditional
+    index-vs-column comparison then catches the stamped identities disagreeing
+    with the real customer ids - which is what an unjoined rename looks like
+    the moment real CLIENTNUMs travel beside it."""
+    index = pd.Index([0, 1, 2, 3], name="CLIENTNUM")  # renamed positions
+    saving = pd.Series([10.0, 30.0, -2.0, 20.0], index=index, dtype=float)
+    value = pd.Series([100.0, 300.0, 50.0, 200.0], index=index, dtype=float)
+    clientnum = pd.Series([4, 1, 3, 2], index=index, dtype="int64")  # real ids
+
+    with pytest.raises(ValueError, match="disagrees"):
+        target_priority(saving, value, clientnum)
+
+
+def test_a_fully_self_consistent_rename_is_beyond_this_guard_and_this_file_says_so():
+    """THE LIMIT, pinned deliberately (4-1b code review, 3-3 house pattern).
+
+    A frame positionally combined and THEN stamped with a self-consistent
+    CLIENTNUM identity (index and column both carrying the same wrong story)
+    passes every check in this layer - no label contract can distinguish a
+    consistent lie from the truth. That is WHY the join lives at one committed
+    point (the 4-1a mart assembly) rather than being re-derived per caller.
+    If this test ever fails, the layer gained a defence this file must then
+    document instead of this limit."""
+    index = pd.Index([0, 1, 2, 3], name="CLIENTNUM")
+    saving = pd.Series([10.0, 30.0, -2.0, 20.0], index=index, dtype=float)
+    value = pd.Series([100.0, 300.0, 50.0, 200.0], index=index, dtype=float)
+    clientnum = pd.Series([0, 1, 2, 3], index=index, dtype="int64")  # same lie
+
+    ranks = target_priority(saving, value, clientnum)  # passes - the limit
+
+    assert sorted(ranks.tolist()) == [1, 2, 3, 4]
+
+
+def test_a_nullable_int_index_with_na_names_the_null_key(distinct):
+    """Int64 passes the integer dtype check while carrying pd.NA - without the
+    dedicated check the failure surfaced as "index disagrees with column",
+    misnaming a null join key as a mis-join (4-1b code review)."""
+    saving, value, clientnum = distinct
+    poisoned_index = pd.Index([4, 1, 3, pd.NA], dtype="Int64", name="CLIENTNUM")
+    poisoned = pd.Series(saving.to_numpy(), index=poisoned_index)
+
+    with pytest.raises(ValueError, match="missing values in its CLIENTNUM index"):
+        target_priority(poisoned, value, clientnum)
+
+
+def test_a_float_clientnum_column_is_refused(distinct):
+    """The tie-break COLUMN gets the same integer rule as the index: the
+    tripwire compares VALUES (708082083 == 708082083.0), so a float column
+    would reopen the rounding-split hole the index check closes."""
+    saving, value, clientnum = distinct
+
+    with pytest.raises(ValueError, match="integer CLIENTNUM"):
+        target_priority(saving, value, clientnum.astype(float))
+
+
+def test_the_random_baseline_refuses_a_duplicated_customer_index():
+    """The baseline path skips `_validate_alignment`, so without its own check
+    a fan-out join would sample one customer twice and quietly distort the
+    denominator of every multiple (4-1b code review)."""
+    index = pd.Index([1, 1, 2], name="CLIENTNUM")
+    saving = pd.Series([10.0, 10.0, 30.0], index=index, dtype=float)
+
+    with pytest.raises(ValueError, match="duplicated customer index"):
+        random_baseline(saving, n_contacts=1, draws=8, seed=RANDOM_SEED)
 
 
 def test_a_duplicated_customer_is_refused():
@@ -843,7 +914,11 @@ def test_the_empty_campaign_message_names_each_binding_constraint(
     result = select_within_budget(saving, value, clientnum, budget=budget)
     baseline = random_baseline(saving, n_contacts=0, draws=8, seed=RANDOM_SEED)
 
-    with pytest.raises(ValueError, match=constraint_word):
+    # BOTH halves of AC3 pinned: the empty-campaign guard fired ("0 contacts")
+    # AND it named the cause. Matching the constraint word alone would stay
+    # green if the guard vanished and some other message happened to carry the
+    # word (4-1b code review).
+    with pytest.raises(ValueError, match=rf"0 contacts.*{constraint_word}"):
         multiple_over_random(result, baseline)
 
 
@@ -851,15 +926,21 @@ def test_the_multiple_is_refused_when_the_baseline_is_not_positive():
     """A ratio against a zero or negative denominator is not a multiple.
 
     Distinct from the empty-campaign case since 4-1b: here the campaign DID buy
-    a contact (the one positive customer), but the whole-population baseline
-    mean is negative, so the denominator is the genuine problem and the message
-    may say so.
+    a contact, so the denominator is the genuine problem and the message may
+    say so. The baseline is CONSTRUCTED, not drawn: a sampled mean's sign
+    depends on the seed and the sampler, and a test whose premise can silently
+    flip with RANDOM_SEED proves nothing (4-1b code review). Building the
+    frozen result object directly makes the negative denominator a fact of the
+    fixture, and `multiple_over_random` accepts result objects precisely so
+    their contents are checkable.
     """
     saving, value, clientnum = _population([10.0, -50.0, -60.0], [10.0, 20.0, 30.0], [1, 2, 3])
     result = select_within_budget(saving, value, clientnum, budget=1_000_000.0)
     assert result.selected_count == 1  # the campaign is NOT empty
-    baseline = random_baseline(saving, n_contacts=1, draws=64, seed=RANDOM_SEED)
-    assert baseline.mean_total < 0.0  # mean of {10, -50, -60} draws
+    baseline = RandomBaseline(
+        mean_total=-33.3, spread_total=1.0, minimum_total=-60.0,
+        maximum_total=10.0, draws=64, seed=RANDOM_SEED, n_contacts=1,
+    )
 
     with pytest.raises(ValueError, match="positive baseline"):
         multiple_over_random(result, baseline)

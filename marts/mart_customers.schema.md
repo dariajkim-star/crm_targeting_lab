@@ -29,8 +29,8 @@
 | `CLIENTNUM` | int64 | ID | no | 원본(BankChurners) | 고객 식별자. 세 소스의 **라벨 조인 키**이자 마트의 정체성. 유일. | 조인·식별 전용. 집계 금지. |
 | `segment_id` | int64 | 범주(1–4) | no | `crm/segment/segments.py` | K-means 세그먼트 ID(1–4, 실측). features_customers에서 그대로 소비. | 그룹핑 전용. 크기 비교 무의미(명목 척도). |
 | `customer_value` | float64 | 원척도(무통화, NFR3) | no | `crm/segment/value.py::customer_value` | 고객 가치 = `Total_Trans_Amt`(원척도). **가정**: 거래액이 가치의 1차 프록시(SPEC CAP-5). 정규화·로그 없음. AD-11 단일 정의. | 금액 축. 재가중·재계산 금지(AD-11). |
-| `churn_score` | float32 | 확률스케일 순위신호 [0,1] | no | `crm/churn/model.py` (03) | **원(비보정) out-of-fold** 이탈 점수. 2x2 분면이 소비하는 순위 신호. | **순위 전용 — 금액 산식 사용 금지**(오선택 시 총합 +19.0% 부풀림, 실측 1,730,042 vs 정답 1,454,088). |
-| `churn_prob_calibrated` | float64 | 확률 [0,1] | no | `crm/churn/calibrate.py` (3-0) | **Platt 보정** 이탈 확률. expected_saving의 확률 입력. | **금액 전용 — 분면 컷 재계산에 사용 금지**(3-1은 원점수 소유; isotonic류 재보정은 분면을 바꿀 수 있음). |
+| `churn_score` | float32 | 확률스케일 순위신호 [0,1] | no | `crm/churn/model.py` (03) | **원(비보정) out-of-fold** 이탈 점수. 2x2 분면이 소비하는 순위 신호. | **순위 전용 — 금액 산식 사용 금지**(오선택 시 총합 +19.0% 부풀림, 3-2 실측: 1,730,042 vs 정답 1,454,088). |
+| `churn_prob_calibrated` | float64 | 확률 [0,1] | no | `crm/churn/calibrate.py` (3-0) | **Platt 보정** 이탈 확률. expected_saving의 확률 입력. | **금액 전용 — 분면 컷 재계산에 사용 금지**(3-1은 원점수 소유; isotonic류 재보정은 분면을 바꿀 수 있음). churn_score와 한 프레임 공존 — 드롭다운 오선택 주의. |
 | `quadrant_official` | object (str) | 범주(ASCII enum) | no | `crm/campaign/matrix.py::assign_quadrant` | 공식 2x2 분면: `save_first`·`watch`·`low_cost_keep`·`accept_churn`. 경계 상단 `>=`(AD-12). 라벨·임계값 **단일 계산**. | 소비 전용. 자체 컷 재계산 금지(AD-12). |
 | `threshold_official_risk` | float64 | 확률스케일 [0,1] | no | `crm/campaign/matrix.py` | 이 모집단에서 실현된 위험 컷 = churn_score의 `risk_quantile=0.75` 분위. 전 행 동일(브로드캐스트). 시나리오 뷰의 기준선(AD-3). | 검산·기준선 표시 전용. |
 | `threshold_official_value` | float64 | 원척도 | no | `crm/campaign/matrix.py` | 실현된 가치 컷 = customer_value의 `value_quantile=0.50`(중위). 전 행 동일. | 검산·기준선 표시 전용. |
@@ -48,10 +48,10 @@
 
 **정의(AD-12 단일 소유, 여기 고정)**: *"`campaign_selected` = `target_priority ≤ 예산이 사는 접촉
 수` AND `expected_saving > 0` — 산출 함수는 `crm/campaign/priority.py::select_within_budget`(단일
-소유), 예산·접촉비용은 호출 인자. 예산이 남아도 음수 절감 고객은 사지 않는다(D1, 실측: 전원
-구매는 양수만 구매보다 총액 2,812 낮음)."*
+소유), 예산·접촉비용은 호출 인자. 예산이 남아도 음수 절감 고객은 사지 않는다(**3-3 D1** — 실측
+1,456,900 vs 전원 구매 1,454,088, 출처: `priority.py` 모듈 docstring·`priority-report-3-3.md`)."*
 
-**이 마트에 컬럼이 없는 이유(비탑재 결정)**: 선택은 **예산의 함수**이고 공식 단일 예산은 존재하지
+**이 마트에 컬럼이 없는 이유(비탑재 — 4-1b D1)**: 선택은 **예산의 함수**이고 공식 단일 예산은 존재하지
 않는다 — 3-3의 결론이 정확히 "배수는 예산의 함수, 헤드라인은 곡선이지 한 점이 아니다"였다. 임의의
 예산 하나를 config에 박아 컬럼을 실체화하면 **시나리오 입력을 사실로 세탁**하는 것이다. 선택의
 실체화는 예산이 주어지는 소비 지점(4-3 시나리오 뷰)에서 `select_within_budget` 호출로 수행한다.

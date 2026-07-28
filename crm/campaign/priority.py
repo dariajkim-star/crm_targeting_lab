@@ -190,19 +190,39 @@ def _require_clientnum_index(series: pd.Series, axis_name: str) -> None:
     its own, so a positional combine of two differently-ordered frames produced
     a total of 1,994,740.8 (+37.2%) with nothing raised - under a RangeIndex
     AND under the mart shape alike (story 3-3 code review refuted the earlier
-    "effective from 4-1" claim). The only full defence is to refuse, at this
-    layer's entrance, any axis that does not name its rows: the index must BE
-    CLIENTNUM. A bare RangeIndex axis is no longer expressible here - callers
-    join on CLIENTNUM first (`crm/marts/customers.py` is the committed example).
+    "effective from 4-1" claim). Callers therefore join on CLIENTNUM first;
+    `crm/marts/customers.py` is the committed example.
 
-    Integer dtype is part of the requirement for the reason the mart rejects a
-    float join key: 708082083 == 708082083.0 compares equal while a float key
-    can hide rounding-split identities (story 4-1a code review E2).
+    WHAT THIS GUARD DOES AND DOES NOT PROVE (4-1b code review). It refuses the
+    ACCIDENT shapes: a bare RangeIndex (never joined), a float or NA-bearing
+    key (a join that cannot be trusted). It does NOT prove the join happened:
+    `axis.index.name = "CLIENTNUM"` on an unjoined RangeIndex passes here, and
+    the index-vs-column tripwire in `_validate_alignment` then catches the case
+    where the stamped identities DIVERGE from the clientnum column. What no
+    label contract can catch is identity stamped wrong at the source - a frame
+    positionally combined and THEN set_index("CLIENTNUM") carries internally
+    consistent, wrong pairings. That is why the join lives at ONE committed
+    point (the 4-1a mart assembly) instead of being re-derived per caller, and
+    a test pins this limit rather than letting the docstring overclaim.
+
+    Integer dtype is required because a float key can hide rounding-split
+    identities - two keys that differ past float precision compare equal and
+    merge two customers (story 4-1a code review E2). NA is refused by name:
+    a nullable Int64 index passes the dtype check while carrying pd.NA, and
+    the tripwire would then report "index disagrees with column" when the real
+    fault is a null join key.
     """
+    # An EMPTY axis is deliberately let through UNTOUCHED: `_validate_axis`
+    # names emptiness as the failure. Checking the name or dtype of an empty
+    # index (object dtype, meaningless) would misdiagnose a missing population
+    # as a key-typing problem.
+    if len(series) == 0:
+        return
     if series.index.name != _CLIENTNUM_AXIS:
         raise ValueError(
-            f"target_priority and its neighbours need the {axis_name} axis to "
-            f"be indexed BY {_CLIENTNUM_AXIS} (got index name "
+            f"the campaign ranking layer (target_priority / "
+            f"select_within_budget / random_baseline) needs the {axis_name} "
+            f"axis to be indexed BY {_CLIENTNUM_AXIS} (got index name "
             f"{series.index.name!r}). A bare positional index cannot prove "
             f"which customer each row belongs to - measured, that misalignment "
             f"inflated the campaign total by 37.2% with nothing raised. Build "
@@ -210,16 +230,20 @@ def _require_clientnum_index(series: pd.Series, axis_name: str) -> None:
             f"crm/marts/customers.py is the committed example), do not rename "
             f"an unjoined index."
         )
-    # An EMPTY axis is deliberately let through to `_validate_axis`, which
-    # names emptiness as the failure - an empty index has no meaningful dtype
-    # (pandas gives it object), and "expected an integer dtype" would misdiagnose
-    # a missing population as a key-typing problem.
-    if len(series) > 0 and not is_integer_dtype(series.index):
+    if not is_integer_dtype(series.index):
         raise ValueError(
             f"the {axis_name} axis carries a {_CLIENTNUM_AXIS} index of dtype "
             f"'{series.index.dtype}', expected an integer dtype. A float "
             f"customer key can hide rounding-split identities (story 4-1a "
             f"code review) - fix the join key upstream rather than casting."
+        )
+    if series.index.hasnans:
+        raise ValueError(
+            f"the {axis_name} axis carries missing values in its "
+            f"{_CLIENTNUM_AXIS} index. A join key cannot be null - an "
+            f"unidentified row would otherwise surface downstream as an "
+            f"'index disagrees with column' report, which misnames the fault. "
+            f"Fix the upstream join (the mart rejects null keys at assembly)."
         )
 
 
@@ -287,12 +311,17 @@ def _validate_alignment(
     `churn_scored.parquet` is not in the same row order as
     `bankchurners.parquet`, yet both carry a plain `RangeIndex`, so
     `Index.equals` returns True and every guard in `simulate.py` passes -
-    measured, that misalignment inflated the total by 37% with nothing raised.
-    Because `CLIENTNUM` arrives here as a sort key, its VALUES can be compared
-    against the index labels. Under 3-3 this guard was partial (it fired only
-    when the index happened to be CLIENTNUM-shaped); since 4-1b the index is
-    REQUIRED to be CLIENTNUM (`_require_clientnum_index`), so the comparison
-    always runs and a positionally-combined pair cannot reach the sort.
+    measured, that misalignment inflated the total by 37.2% with nothing
+    raised. Because `CLIENTNUM` arrives here as a sort key, its VALUES can be
+    compared against the index labels. Under 3-3 this guard was partial (it
+    fired only when the index happened to be CLIENTNUM-shaped); since 4-1b the
+    comparison is unconditional. PRECONDITION, owned by the callers: every
+    public entry point runs `_require_clientnum_index` first, so by the time
+    this helper runs the index IS CLIENTNUM - calling it on a legitimately
+    non-CLIENTNUM index would mis-report an honest input as a mis-join. The
+    tripwire catches stamped identities that DIVERGE from the clientnum
+    column; identities stamped consistently wrong at the source are beyond any
+    label check (see `_require_clientnum_index`).
     """
     if len(expected_saving) != len(value) or len(expected_saving) != len(clientnum):
         raise ValueError(
@@ -391,10 +420,24 @@ def target_priority(
     _require_series(clientnum, _CLIENTNUM_AXIS)
     # Identity before pairing before contents (4-1b): an axis that cannot name
     # its customers fails here, so the alignment checks below always run over
-    # label-joined axes and the column-vs-index comparison is never vacuous.
+    # identity-carrying axes and the column-vs-index comparison is never
+    # vacuous. (Carrying an identity is not proof it was joined - see the
+    # helper's docstring for the exact limit.)
     _require_clientnum_index(expected_saving, _SAVING_AXIS)
     _require_clientnum_index(value, _VALUE_AXIS)
     _require_clientnum_index(clientnum, _CLIENTNUM_AXIS)
+    # The clientnum COLUMN gets the same integer requirement as the index
+    # (4-1b code review): a float column would compare value-equal against an
+    # int index in the tripwire below (708082083 == 708082083.0), so the float
+    # rounding-split risk the index check closes would reopen through the
+    # tie-break key.
+    if len(clientnum) > 0 and not is_integer_dtype(clientnum):
+        raise ValueError(
+            f"target_priority needs an integer {_CLIENTNUM_AXIS} axis, got "
+            f"dtype '{clientnum.dtype}'. A float customer key can hide "
+            f"rounding-split identities - fix the upstream join rather than "
+            f"casting."
+        )
     _validate_alignment(expected_saving, value, clientnum)
     _validate_axis(expected_saving, _SAVING_AXIS, non_negative=False)
     _validate_axis(value, _VALUE_AXIS, non_negative=True)
@@ -609,11 +652,22 @@ def random_baseline(
             outside ``0..len(expected_saving)``.
     """
     _require_series(expected_saving, _SAVING_AXIS)
-    # Population identity (4-1b, 구item4): the baseline's whole point is that it
-    # draws from the SAME population the campaign targeted. A bare Series could
-    # be any subset or any join - requiring the CLIENTNUM index makes the
-    # population auditable by construction.
+    # Population identity (4-1b, 구item4): the baseline draws from a POPULATION,
+    # and a bare Series cannot say which one. Requiring the CLIENTNUM index
+    # names the rows; it does NOT prove the baseline and a selection share a
+    # population (the result object records no identity - deferred, see
+    # deferred-work.md). Uniqueness is checked here because this path skips
+    # `_validate_alignment`: a fan-out join would let one customer enter the
+    # sample twice and quietly distort the denominator of every multiple.
     _require_clientnum_index(expected_saving, _SAVING_AXIS)
+    if not expected_saving.index.is_unique:
+        duplicated = expected_saving.index[expected_saving.index.duplicated()]
+        raise ValueError(
+            f"random_baseline received a duplicated customer index "
+            f"{duplicated.unique()[:5].tolist()}. A fan-out join would put one "
+            f"customer into the sample more than once and distort the baseline "
+            f"every multiple is judged against."
+        )
     _validate_axis(expected_saving, _SAVING_AXIS, non_negative=False)
     # Type-check before the range checks: `0 <= 2.5 <= n` and `3.7 > 0` both
     # pass, and the failure then surfaces from numpy naming neither the argument

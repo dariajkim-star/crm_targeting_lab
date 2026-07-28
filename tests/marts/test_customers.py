@@ -336,6 +336,18 @@ def _schema_row(name: str) -> str:
     raise AssertionError(f"schema doc has no table row for column '{name}'")
 
 
+def _prohibition_cell(name: str) -> str:
+    """The 용도/금지 cell (7th column) of one schema table row.
+
+    Cell-scoped on purpose (4-1b code review): asserting on the WHOLE row stays
+    green if the prohibition text drifts into the definition cell - which is
+    exactly the column-shift accident the dtype parser is vulnerable to.
+    """
+    cells = [cell.strip() for cell in _schema_row(name).strip().strip("|").split("|")]
+    assert len(cells) == 7, f"schema row for '{name}' has {len(cells)} cells, expected 7"
+    return cells[6]
+
+
 def test_schema_doc_carries_the_misuse_prohibitions() -> None:
     """4-1b AC5: the +19% column swap has no guard in a BI dropdown - the
     schema table's 용도/금지 cell is the only defence layer that reaches a
@@ -343,9 +355,20 @@ def test_schema_doc_carries_the_misuse_prohibitions() -> None:
     text = SCHEMA_DOC.read_text(encoding="utf-8")
 
     assert "용도/금지" in text, "schema table lost its usage/prohibition column"
-    assert "금액 산식 사용 금지" in _schema_row("churn_score")
-    assert "+19.0%" in _schema_row("churn_score")
-    assert "분면 컷 재계산에 사용 금지" in _schema_row("churn_prob_calibrated")
+    assert "금액 산식 사용 금지" in _prohibition_cell("churn_score")
+    assert "+19.0%" in _prohibition_cell("churn_score")
+    assert "분면 컷 재계산에 사용 금지" in _prohibition_cell("churn_prob_calibrated")
+
+
+def _campaign_selected_section() -> str:
+    """The campaign_selected section body, scoped between its heading and the
+    next one - whole-document asserts would pass on strings that pre-exist in
+    the target_priority definition and the column table (4-1b code review)."""
+    text = SCHEMA_DOC.read_text(encoding="utf-8")
+    start = text.find("## `campaign_selected`")
+    assert start != -1, "schema doc lost its campaign_selected section"
+    end = text.find("\n## ", start + 1)
+    return text[start:end] if end != -1 else text[start:]
 
 
 def test_schema_doc_pins_the_campaign_selected_definition() -> None:
@@ -353,12 +376,12 @@ def test_schema_doc_pins_the_campaign_selected_definition() -> None:
     deliberately not shipped - selection is a function of a budget, and no
     official single budget exists, so materialising the column would launder a
     scenario input into a fact. The doc must carry definition AND the reason."""
-    text = SCHEMA_DOC.read_text(encoding="utf-8")
+    section = _campaign_selected_section()
 
-    assert "`campaign_selected`" in text
-    assert "select_within_budget" in text
-    assert "비탑재" in text
-    assert "expected_saving > 0" in text
+    assert "select_within_budget" in section
+    assert "비탑재" in section
+    assert "expected_saving > 0" in section
+    assert "시나리오 입력" in section  # the reason, not just the verdict
 
 
 def test_the_mart_value_column_is_the_customer_value_output_verbatim(monkeypatch) -> None:
