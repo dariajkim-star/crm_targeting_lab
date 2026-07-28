@@ -304,9 +304,13 @@ action_items:
     owner: "Paige"
     status: done
   - epic: 4
-    action: "본공연 실측 원료 결정(공시체계 DART/SEC/병행 + peer 정의) → 데이터 스파이크 착수 (본공연 크리티컬 패스)"
+    action: "본공연 실측 원료 결정(공시체계 DART/SEC/병행 + peer 정의) → 데이터 스파이크 착수 (본공연 크리티컬 패스) — 종결(daria 결정 2026-07-28, 파티): SEC 채택(DART 레짐 교란·병행 조인 폭발로 기각), peer = 업종 x 레짐 코호트(filer status), opacity_rank는 레짐 통제 후 잔차만. THESIS 7절 대장 기재"
     owner: "daria + Mary"
-    status: open
+    status: done
+  - epic: 4
+    action: "스파이크 1일차 실행: docs/screener/spike-1-sec-disclosure-gap.md (T1~T6, kill criteria K1~K4 착수 전 확정). 최대 난관 = AC3 부재!=누락 대체설명 반증"
+    owner: "daria + Amelia"
+    status: ready-for-dev
   - epic: 4
     action: "crm 이식 부품 목록(회고 6절)을 스크리너 스캐폴딩 시 conventions/스파인에 반영 — goldens 단일 출처/바이트 불변 DoD/문서-계약 3법칙 포함"
     owner: "Winston + Amelia"
