@@ -203,7 +203,11 @@ development_status:
   # 385→391 passed, 마트·코드 바이트 불변. Sally 라인(A8·B8·오용방지) 종결 확정.
   # 교훈: 문서-계약 테스트 3대 함정(미검증 항목=표류 항목 / 종료 앵커 소실 / 미파싱 칸) 실증·봉인.
   4-3-dashboard-specification: done
-  4-4-public-check-readme-tableau-publish: backlog
+  # 4-4 create-story 2026-07-24: blocked-external 분업 — 세션=공개점검(커밋이력 스캔+트리 무결
+  # pytest 영구가드 D1)+README 본편(골든 수치표·가정 4종·미달 정직·테스트수 환경 병기 D2)+퍼블리시
+  # 절차서(docs/tableau-publish-runbook.md D3, OQ-5는 0단계 전제). daria=계정확인·워크북·퍼블리시·링크.
+  # 링크 미확보는 done 안 막음(epics AC). 4-3 교훈 3종(미검증=표류·앵커 단언·파싱 칸만 출처) 적용.
+  4-4-public-check-readme-tableau-publish: in-progress
   epic-4-retrospective: optional
 
 # EXECUTION ORDER OVERRIDE (epic-1 retrospective, 2026-07-22):
