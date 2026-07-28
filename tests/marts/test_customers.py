@@ -463,24 +463,22 @@ def test_real_data_mart_preserves_base_and_reproduces_correct_total() -> None:
 
     mart = build_customer_mart(bankchurners, features, scored)
 
-    assert len(mart) == 10127
+    from tests.marts import goldens
+
+    assert len(mart) == goldens.ROW_COUNT
     assert int(mart.isna().sum().sum()) == 0
-    assert sorted(mart["target_priority"].tolist()) == list(range(1, 10128))
-    assert mart["expected_saving"].sum() == pytest.approx(1454088, abs=1.0)
+    assert sorted(mart["target_priority"].tolist()) == list(range(1, goldens.ROW_COUNT + 1))
+    assert mart["expected_saving"].sum() == pytest.approx(goldens.EXPECTED_SAVING_TOTAL, abs=1.0)
     # Golden quadrant anchors (code review B3): the risk cut is the 0.75
     # quantile of the RAW churn_score. If anyone ever wires the CALIBRATED
     # column into `assign_quadrant` by mistake, the cut becomes the calibrated
     # quantile and these go red - the column-name guard in `expected_saving`
-    # cannot see that swap, so this is the one net that catches it. Values are
-    # measured on artifact 9e1a4d71800f and recorded in the schema doc; a
-    # retrain moves them, and updating BOTH places together is the contract.
-    assert mart["threshold_official_risk"].iloc[0] == pytest.approx(0.132753, abs=1e-6)
-    assert mart["threshold_official_value"].iloc[0] == pytest.approx(3899.0)
-    assert mart["quadrant_official"].value_counts().to_dict() == {
-        "low_cost_keep": 4624,
-        "accept_churn": 2971,
-        "watch": 2089,
-        "save_first": 443,
-    }
+    # cannot see that swap, so this is the one net that catches it. The values
+    # live in `tests/marts/goldens.py` - THE single source the schema doc, the
+    # dashboard spec's anchor table and the README quote as text (4-4 review
+    # H3: retyped copies were the drift vector).
+    assert mart["threshold_official_risk"].iloc[0] == pytest.approx(goldens.RISK_CUT, abs=1e-6)
+    assert mart["threshold_official_value"].iloc[0] == pytest.approx(goldens.VALUE_CUT)
+    assert mart["quadrant_official"].value_counts().to_dict() == goldens.QUADRANT_COUNTS
     # Byte-identity across two independent builds on the real frame (AC6).
     assert serialize_mart(mart) == serialize_mart(build_customer_mart(bankchurners, features, scored))

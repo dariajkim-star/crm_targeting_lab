@@ -4,7 +4,7 @@ baseline_commit: 1927df0
 
 # Story 4.4: 공개 점검·README·Tableau 퍼블리시 (blocked-external)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -123,9 +123,46 @@ claude-opus-5 (Claude Code, dev-story workflow)
 **신규**: `docs/tableau-publish-runbook.md`, `tests/docs/__init__.py`, `tests/docs/test_public_release.py`
 **수정**: `README.md`(본편 재작성, 셋업 절 보존), sprint-status, 스토리 파일
 
+### 공개 점검 — 마트 컬럼 유래 점검표 (AC1 ①, 리뷰 결함2 반영)
+
+| 컬럼 | 산출 모듈 | 유래 |
+|---|---|---|
+| `CLIENTNUM` | 원본(BankChurners) | 공개 원본의 고객 ID 그대로 |
+| `segment_id` | `crm/segment/segments.py` | BankChurners RFM 프록시의 K-means 파생 |
+| `customer_value` | `crm/segment/value.py` | BankChurners `Total_Trans_Amt` 원척도 |
+| `churn_score` | `crm/churn/model.py` | BankChurners 피처 8종의 OOF 모델 점수 |
+| `churn_prob_calibrated` | `crm/churn/calibrate.py` | 위 점수의 Platt 보정 |
+| `quadrant_official` | `crm/campaign/matrix.py` | 위 두 축의 분위 컷 파생 |
+| `threshold_official_risk` | `crm/campaign/matrix.py` | churn_score 0.75분위(모집단 파생) |
+| `threshold_official_value` | `crm/campaign/matrix.py` | customer_value 중위(모집단 파생) |
+| `expected_saving` | `crm/campaign/simulate.py` | 보정확률×가치×정책가정 산식 파생 |
+| `target_priority` | `crm/campaign/priority.py` | expected_saving 순위 파생 |
+
+전 10컬럼이 공개 데이터셋(BankChurners) 유래·파생 + 선언된 정책가정뿐 — 외부·비공개 정보 유입 0.
+
+### Senior Developer Review (AI) — 2026-07-24
+
+**방식**: 3레이어 병렬(Blind/Edge/Auditor) → 파티 판정(daria 전권 위임). **Auditor: AC 전건 부분 충족(Major 1) — done 전 수정 권고 → 전건 처분 후 done.**
+
+**핵심 결함과 처분(전건 해소, 401 passed)**:
+- [x] **H1/결함1 (Major) — README "391 passed"가 자기 커밋으로 즉시 stale**: "미검증 항목=표류 항목"의 교과서적 재발(보호 안 된 유일한 수치 칸이 표류). → done 커밋 기준 최종 수치(401)로 마지막에 기입 + "done 커밋 기준" 명시.
+- [x] **H3/E6 (High) — 골든 하드코딩 4중 사본**: `tests/marts/goldens.py` **단일 출처 모듈 신설** — 마트 골든 테스트·README 계약 테스트가 전부 import, 문서 3종은 사본임을 명시. 표류 시 한 지점에서 전부 red.
+- [x] **H2 (High) — PR-AUC 출처가 미커밋 아티팩트인데 "전부 커밋" 주장**: 표 서두·출처 칸 정직화("gitignored 아티팩트, 03 재실행으로 재생성") + 테스트가 "재생성" 문구 단언.
+- [x] **E2 (High, false green) — git quotepath 이스케이프로 비ASCII CSV 가드 통과**: `-c core.quotepath=false` + `-z` + UTF-8 bytes 디코딩.
+- [x] **E1 (High) — git 부재/비리포/타임아웃이 "위반"으로 오판**: skip 처리(환경 부재≠위반, D2 정신).
+- [x] **E3/E4 (High) — 아티팩트 가드 커버리지**: `data/`·`models/` **경로 프리픽스 단언**(닫힌 집합 — xgboost `model.json`까지 커버) + 확장자 17종 확대.
+- [x] **결함2 — 컬럼 단위 점검표 미동봉**: 위 표로 동봉.
+- [x] **결함3/M3/M4/E12/E13/E14 — 절차서 보강**: 전 단계 의심 포인트·탭4 스텁 지시·10컬럼 타입 전열거·표기 무시+±1 대조 규칙·range 모드 파라미터·budget=0 캡션. 테스트 단언 추가.
+- [x] **E8/E10/결함4 — 슬라이스 견고화**: `_readme_section` 양 앵커 단언·라인 정규식, 정직 절 검사를 절-한정으로.
+- [x] **결함5 — 발견 절 수치 무방비**: x17.27·8,587·+19.0%·+37.2% 단언 신설.
+- [x] **E11/L3 — 링크 자리 가드**: "자리 표시 OR 공개 링크" 양자택일 단언.
+- [x] **M5/M6 — 검산 기준**: ±1 허용오차 명시, 절차서 수치 사본 제거(사양서 표 단일 포인터).
+- **기각**: E5(fixture CSV 예외 — 신규 CSV red는 의도된 공개 게이트 마찰), E7/E9(헤딩 유연화 — 구조 고정이 목적), L1(done 처리로 해소), E15(skip 로직에 흡수), 7(±1은 문서에 명시로 충분).
+
 ### Change Log
 
 - 2026-07-24: 4-4 세션 몫 구현 — 공개 점검(이력 0건+영구 가드), README 본편(골든 수치표·가정·정직 절), 퍼블리시 절차서. 397 passed, 마트·코드 불변.
+- 2026-07-24: 코드리뷰(3레이어+파티) 반영 — goldens.py 단일 출처 신설(4중 사본 해소), README 정직화(테스트 수 done 기준·PR-AUC 출처), git subprocess 견고화(quotepath false green 봉인·skip), 경로 프리픽스 가드, 절차서 전면 보강, 슬라이스 양 앵커. 397→401 passed(회귀 0), 마트·사양서·코드 불변.
 
 ---
 

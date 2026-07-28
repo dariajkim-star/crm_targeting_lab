@@ -7,16 +7,16 @@
 
 ## 핵심 수치
 
-전부 커밋된 파이프라인·테스트가 재현하는 값이다(마트는 결정론 — 2회 실행 바이트 동일, NFR4). 이 표는 `marts/mart_customers.schema.md`·`marts/dashboard-spec.md` 검산 앵커와 **동시 갱신 계약**이다.
+마트 수치는 커밋된 마트·테스트가 그대로 재현하고(결정론 — 2회 실행 바이트 동일, NFR4), 모델 지표는 **재생성 가능한 gitignored 아티팩트의 기록**이다(아래 출처 칸 참조). 이 표의 골든값은 `tests/marts/goldens.py`가 **단일 출처**로 소유하며, 스키마 문서·사양서 검산 앵커·이 표는 그 사본이다 — 문서-계약 테스트가 사본과 출처의 일치를 강제한다.
 
 | 항목 | 값 | 출처 |
 |---|---|---|
-| 고객 수(마트 행) | **10,127** (전원 보존, null 0) | `marts/mart_customers.csv` |
-| 이탈모델 PR-AUC | **0.9508** (baseline 0.6751, lift **+40.8%**, 예측자 8) | `models/churn_model.meta.json` (03 스테이지) |
+| 고객 수(마트 행) | **10,127** (전원 보존, null 0) | `marts/mart_customers.csv` (커밋됨) |
+| 이탈모델 PR-AUC | **0.9508** (baseline 0.6751, lift **+40.8%**, 예측자 8) | `models/churn_model.meta.json` — **gitignored 아티팩트**, `pipelines/03_train_churn.py` 재실행으로 재생성(AD-7 결정론, 고정 환경 기준) |
 | 공식 2×2 컷 | risk **0.132753** (0.75분위) · value **3,899** (중위) | `threshold_official_*` 컬럼 |
 | 분면 분포 | save_first 443 · watch 2,089 · low_cost_keep 4,624 · accept_churn 2,971 | `quadrant_official` 컬럼 |
-| 기대절감 총합 | **≈ 1,454,088** (가정: 성공률 0.30·건당 비용 5.0) | `expected_saving` 컬럼 합 |
-| 테스트 | 391 passed (xgboost 미설치 환경, churn 스위트 제외 기준) | `pytest` — 테스트 수는 실행 환경 기준 병기 |
+| 기대절감 총합 | **≈ 1,454,088** (표시 반올림 ±1 — 원값 소수 6자리; 가정: 성공률 0.30·건당 비용 5.0) | `expected_saving` 컬럼 합 |
+| 테스트 | 401 passed (4-4 done 커밋 기준; xgboost 미설치 환경, churn 스위트 제외) | `pytest` — 테스트 수는 실행 환경 기준 병기 |
 
 ## 발견 (요약)
 

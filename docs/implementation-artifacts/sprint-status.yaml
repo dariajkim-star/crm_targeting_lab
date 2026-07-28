@@ -1,5 +1,5 @@
 # generated: 2026-07-20
-# last_updated: 2026-07-24 (4-3 done — 대시보드 사양서, 시나리오 탭5 분리·Sally 라인 종결. 4-1b done — 계약 좁히기·오용 방지, 인계 부채 전종결. 4-1a done — 마트 조립·CLIENTNUM 조인·정규 스키마, 코드리뷰 파티 종결.
+# last_updated: 2026-07-24 (4-4 done — 공개점검·README·절차서, 에픽4 세션 몫 전결. 4-3 done — 대시보드 사양서, 시나리오 탭5 분리·Sally 라인 종결. 4-1b done — 계약 좁히기·오용 방지, 인계 부채 전종결. 4-1a done — 마트 조립·CLIENTNUM 조인·정규 스키마, 코드리뷰 파티 종결.
 # 이하 히스토리: 4-1 split→4-1a/4-1b [회고 B1, daria 승인], epic-4 in-progress, 4-1a ready-for-dev — 고객 마트 조립·CLIENTNUM 조인·정규 스키마. 이하 히스토리: epic-3 회고 done — A2→3-0 승격 최대성과, 미결 4-1 수렴 9건, 액션 B1~B8 등재. 3-4 create-story: ready-for-dev — 결론=분면 부호+접촉비율(D1), 코어 2D+risk_q 2차(D2), 동점0 반증(D3), 자체컷 가드 신설(AC6). 3-3 done/443 passed는 미커밋 working tree. epic-2 무기한 동결)
 # project: crm-targeting-lab
 # project_key: NOKEY
@@ -207,7 +207,13 @@ development_status:
   # pytest 영구가드 D1)+README 본편(골든 수치표·가정 4종·미달 정직·테스트수 환경 병기 D2)+퍼블리시
   # 절차서(docs/tableau-publish-runbook.md D3, OQ-5는 0단계 전제). daria=계정확인·워크북·퍼블리시·링크.
   # 링크 미확보는 done 안 막음(epics AC). 4-3 교훈 3종(미검증=표류·앵커 단언·파싱 칸만 출처) 적용.
-  4-4-public-check-readme-tableau-publish: in-progress
+  # 4-4 done 2026-07-24: dev+3레이어+파티 리뷰 종결(daria 전권 위임). 핵심 처분 — README "391"
+  # 자기-stale(미검증 칸=표류 칸 재발) → done 커밋 기준 최종화, goldens.py 단일 출처 신설(골든 4중
+  # 사본 해소 — 마트 테스트·README 테스트가 import, 문서 3종은 사본), PR-AUC 출처 정직화(gitignored
+  # 재생성 아티팩트), git quotepath false-green 봉인+skip, data/·models/ 경로 프리픽스 가드, 절차서
+  # 전면 보강(전 단계 의심 포인트·range 파라미터·표기 무시 대조). 397→401 passed, 마트·코드 불변.
+  # 세션 몫 완결 — 남은 것: daria 절차서 실행(계정→워크북→퍼블리시→링크, 비블로킹) + 에픽4 회고.
+  4-4-public-check-readme-tableau-publish: done
   epic-4-retrospective: optional
 
 # EXECUTION ORDER OVERRIDE (epic-1 retrospective, 2026-07-22):
