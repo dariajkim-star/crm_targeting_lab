@@ -300,9 +300,9 @@ action_items:
     owner: "daria"
     status: open
   - epic: 4
-    action: "옵시디언 에픽4 미러 작성 (Epic DoD 미수행분)"
+    action: "옵시디언 에픽4 미러 작성 (Epic DoD 미수행분) — 종결(2026-07-28): 16_P2_에픽4_완료_요약.md 신규 + 02_CRM_타겟팅_랩.md 러닝 로그 갱신(에픽3 회고~에픽4 회고 구간 공백 해소)"
     owner: "Paige"
-    status: open
+    status: done
   - epic: 4
     action: "본공연 실측 원료 결정(공시체계 DART/SEC/병행 + peer 정의) → 데이터 스파이크 착수 (본공연 크리티컬 패스)"
     owner: "daria + Mary"
