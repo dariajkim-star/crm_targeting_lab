@@ -348,7 +348,7 @@ action_items:
     owner: "Winston"
     status: open
   - epic: 4
-    action: "**스파이크5 양성 대조군 — 탐지력 검증**(spike-5-positive-control-design.md, 8절 개정 반영) — 1차 실행 미완: 28/70 심사, 자격통과 0, 나머지 6배치 월 사용한도 초과로 미실행. X1·X2 미판정. 후보목록 구성 오류 발견(FTS accession-CIK 오매핑 8/28) -> submissions API로 authoritative 취득으로 정정. 8-K Item 4.02 재작성 공시를 코멘트레터와 병행으로 승격. 합성 대조군은 보조지표(synthetic_ceiling)로만, X2 산입 금지. 한도 해제 후 재실행"
+    action: "**스파이크5 양성 대조군 — 탐지력 검증**(spike-5-positive-control-design.md, 8절 개정 반영) — 1차 실행 미완: 28/70 심사, 자격통과 0, 나머지 6배치 월 사용한도 초과로 미실행. X1·X2 미판정. 후보목록 구성 오류 발견(FTS accession-CIK 오매핑 8/28) -> submissions API로 authoritative 취득으로 정정. 8-K Item 4.02 재작성 공시를 코멘트레터와 병행으로 승격. 합성 대조군은 보조지표(synthetic_ceiling)로만, X2 산입 금지. 한도 해제 후 재실행. **8-K 후보 수집은 완료**(9절): FTS 힌트 190 CIK -> submissions API로 Item 4.02 실재 확인 163곳/289건 -> 2019년 이후 70건 -> C4 업종배제 후 **최종 후보 68건**. accession 실재율 100%(코멘트레터는 8/28 오매핑). 남은 것 = 68건 C1~C3 심사 -> companyfacts로 잔차 판정 -> X1·X2"
     owner: "Amelia + Mary"
     status: in-progress
   - epic: 4
