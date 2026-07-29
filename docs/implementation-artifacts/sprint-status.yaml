@@ -348,9 +348,9 @@ action_items:
     owner: "Winston"
     status: open
   - epic: 4
-    action: "**스파이크5 양성 대조군 — 탐지력 검증**(설계: spike-5-positive-control-design.md). SEC comment letter(UPLOAD)·재작성 8-K Item 4.02로 알려진 결함 사례를 파이프라인에 통과시켜 민감도 산출. kill criteria X1(자격통과 >=5건) X2(민감도 >=50%). X2 미달 시 FINDINGS의 진짜누락 0곳을 결론에서 강등. **최우선**"
+    action: "**스파이크5 양성 대조군 — 탐지력 검증**(spike-5-positive-control-design.md, 8절 개정 반영) — 1차 실행 미완: 28/70 심사, 자격통과 0, 나머지 6배치 월 사용한도 초과로 미실행. X1·X2 미판정. 후보목록 구성 오류 발견(FTS accession-CIK 오매핑 8/28) -> submissions API로 authoritative 취득으로 정정. 8-K Item 4.02 재작성 공시를 코멘트레터와 병행으로 승격. 합성 대조군은 보조지표(synthetic_ceiling)로만, X2 산입 금지. 한도 해제 후 재실행"
     owner: "Amelia + Mary"
-    status: ready-for-dev
+    status: in-progress
   - epic: 4
     action: "FINDINGS 한계 절 3분류 재작성 + 개념별 신뢰구간 분리 — done(2026-07-29): 무형자산 전수(거의 확정)/리스 n=12 상한 25%/SBC 의도적추출 구간불가. 46곳 합산은 추출설계 상이로 통계 무효임을 명시. 7-4에 인과·고의를 설계 경계로 재배치"
     owner: "Mary + Paige"
