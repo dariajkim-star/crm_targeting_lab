@@ -308,7 +308,7 @@ action_items:
     owner: "daria + Mary"
     status: done
   - epic: 4
-    action: "스파이크 1일차 실행: docs/screener/spike-1-sec-disclosure-gap.md (T1~T6, kill criteria K1~K4 착수 전 확정) — T1~T4 done + T3-확장 done(무형자산 2번째 개념: 순진한 잔차 467→진짜 94곳, 파생가능 소계 80% 제거. T2 반증 재통과 32.5→3.4pp. 진짜 잔차율 두 개념 1.9%·2.3% 수렴). 다음 = T5(밸류에이션 연결·K3, 진짜 승부처)"
+    action: "스파이크 1일차 실행: docs/screener/spike-1-sec-disclosure-gap.md (T1~T6, K1~K4 착수 전 확정) — T1~T5 done. T5(K3) 조건부 통과: 되살린금액/시총 중앙값 0.49%, 3곳 10%초과(최대 27.0%) -> 금액 축 동행 설계 정당화. T3-확장 정정: 무형 잔차 94->16(83%가 상위 태그 공시), 리스 78은 대체태그 부재로 견고. 최종 표본 32(작음, 판정 유보). 남은 것 = T6 판정문서 + OTC 트랙"
     owner: "daria + Amelia"
     status: in-progress
   - epic: 4
