@@ -308,7 +308,7 @@ action_items:
     owner: "daria + Mary"
     status: done
   - epic: 4
-    action: "스파이크 1일차 실행: docs/screener/spike-1-sec-disclosure-gap.md (T1~T6, kill criteria K1~K4 착수 전 확정) — T1 done, T2 done, T3 done(부재 분해: 잔차 78곳/1.9%, T2 반증 통과 27.4pp→5.0pp, K1 사망 조건 미발생). 다음 = T4(보정 실효) 또는 타개념 확장"
+    action: "스파이크 1일차 실행: docs/screener/spike-1-sec-disclosure-gap.md (T1~T6, kill criteria K1~K4 착수 전 확정) — T1~T4 done(T4: K2 통과·과잉보정 통과, 층화 대조 78곳 중 탈락 SIC4단독 9 vs 층화 20 → T2 최종 정당화. 이진 파일럿 약점 인계). 다음 = T5(밸류에이션 연결·K3, 진짜 승부처) — 필요 시 타개념 확장 선행"
     owner: "daria + Amelia"
     status: in-progress
   - epic: 4
