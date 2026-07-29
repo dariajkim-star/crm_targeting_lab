@@ -324,9 +324,13 @@ action_items:
     owner: "daria"
     status: done
   - epic: 4
-    action: "재무비율 영향 측정 — 되살린 금액을 정상화했을 때 부채비율/총부채대자산 등이 얼마나 움직이는가. 기존 표본·데이터 재사용(가격 API 불필요). K3(기업가치 축)를 뒤집을 수 있는 측정"
+    action: "재무비율 영향 측정 — 종결(2026-07-29, spike-3-ratio-impact.md): **K3는 좁았다**. 같은 12곳에서 10% 초과가 시총 기준 0곳 vs 부채 기준 3곳(중앙 0.38% vs 2.4%, 6배). Lightbridge는 시총 0.37%인데 기존 부채의 89% 증가(240배 격차). 표본도 48->96로 두 배(가격 API 불필요). 핵심 구분 신설: ①진짜누락 안에서도 부외(off-BS) vs 태그만 누락을 갈라야 하며 비율 영향은 전자에만 존재(안 가르면 이중계상)"
     owner: "Amelia + Mary"
-    status: in-progress
+    status: done
+  - epic: 4
+    action: "스파이크3 인계: ①번 52곳의 부외 판정을 개별 10-K로 검증(일부는 단기리스 면제라 정상화 부적절 가능 — 스파이크2에서 이 검증이 개념 하나를 죽인 전례). 이자보상배율·순차입금/EBITDA 미측정(레아 covenant 관점 본편)"
+    owner: "Amelia"
+    status: open
   - epic: 4
     action: "산출물 구조 전환(파티 2026-07-29): 3분류 테이블(진짜누락/다른곳기재/애초0)이 1차 산출물, opacity_rank는 1분류에서 파생되는 2차. 스캐폴딩 시 반영"
     owner: "Winston"
