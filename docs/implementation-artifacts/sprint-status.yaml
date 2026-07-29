@@ -312,13 +312,17 @@ action_items:
     owner: "daria + Amelia"
     status: in-progress
   - epic: 4
-    action: "스파이크 판정 후속 — daria 판정 3건: (1) K1 임계(잔차 1.9%/0.39%가 의미 있는 비중인가, 착수문서가 판정 전 설정 요구했으나 미설정) (2) peer 최소 셀 크기(잠정 n<10) (3) 속행 여부(표적이 예상보다 좁음). 속행 시 권고: 개념 1~2개 추가 -> 잔차 개별 확인 -> 스캐폴딩 -> opacity_rank 첫 스토리"
+    action: "스파이크 판정 후속 daria 판정 3건 — 종결(파티 2026-07-29, daria 전권 위임): (1) K1 임계 = 소급 설정 영구 금지 + 전방 기준(새 개념: 부재 정의 후 잔차>0 AND 개별검증 생존 실명>=1) (2) peer 최소 셀 n>=10 확정(감도 annex 5/20 병기, 사냥감 탈락 3.5% 실측) (3) 조건부 속행 — 3번째 개념 SBC, 전방 기준을 착수 전 kill criteria로. 통과 시 스캐폴딩 -> opacity_rank"
     owner: "daria"
-    status: open
+    status: done
   - epic: 4
-    action: "T2 미확정 1건: peer 셀 최소 크기 임계값(잠정 n<10) 확정 — SIC3 1단계 승급/판정불가 분기점"
+    action: "3번째 개념 SBC(주식보상) 부재 분해 — 착수 전 kill criteria 적용(전방 기준). 파이프라인 재사용, 예상 반나절"
+    owner: "Amelia + Mary"
+    status: ready-for-dev
+  - epic: 4
+    action: "T2 미확정 1건: peer 셀 최소 크기 임계값 — 종결(파티 2026-07-29): n>=10 확정, config 고정+정책가정 라벨+감도 annex(n=5 탈락1/n=20 탈락14 병기)"
     owner: "daria"
-    status: open
+    status: done
   - epic: 4
     action: "T5 착수 조건: Twelve Data 무료 키 발급(twelvedata.com/register, Basic Free 800/day) — 주분석 트랙 가격 소스"
     owner: "daria"
