@@ -308,9 +308,13 @@ action_items:
     owner: "daria + Mary"
     status: done
   - epic: 4
-    action: "스파이크 1일차 실행: docs/screener/spike-1-sec-disclosure-gap.md (T1~T6, K1~K4 착수 전 확정) — T1~T5 + T5확장(4분기) + OTC 트랙 done. K3 조건부 통과, 표적 좁음: 주분석 시총$10M이상 41곳 중앙값 0.38%, 10%초과 3곳(7.3%). OTC 21곳은 중앙값 0.03%/10%초과 0곳 — 예상 반전, 물리분리가 값을 함. Stooq 폐기(봇차단, 우회 안함) -> Twelve Data가 OTC 실제 제공. 남은 것 = T6 판정문서"
+    action: "스파이크 1일차 실행: docs/screener/spike-1-sec-disclosure-gap.md — **T1~T6 전건 done**. 판정(spike-1-verdict.md): K1 조건부/K2 통과/K3 조건부/K4 통과. 가설 생존하나 표적 좁음(모집단 ~2%, 값어치 흔들리는 곳 그중 7%). 절차 결함 자백: K1 임계 미설정으로 충분성 판정 불가 -> daria 반환. 본공연 이식 계약 8건 확정"
     owner: "daria + Amelia"
     status: in-progress
+  - epic: 4
+    action: "스파이크 판정 후속 — daria 판정 3건: (1) K1 임계(잔차 1.9%/0.39%가 의미 있는 비중인가, 착수문서가 판정 전 설정 요구했으나 미설정) (2) peer 최소 셀 크기(잠정 n<10) (3) 속행 여부(표적이 예상보다 좁음). 속행 시 권고: 개념 1~2개 추가 -> 잔차 개별 확인 -> 스캐폴딩 -> opacity_rank 첫 스토리"
+    owner: "daria"
+    status: open
   - epic: 4
     action: "T2 미확정 1건: peer 셀 최소 크기 임계값(잠정 n<10) 확정 — SIC3 1단계 승급/판정불가 분기점"
     owner: "daria"
