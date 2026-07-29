@@ -340,12 +340,28 @@ action_items:
     owner: "daria"
     status: done
   - epic: 4
-    action: "**daria 판정 대기 — 지표 이름**(네이밍 규칙: 현업 jargon 확인 후 daria 선택, 임의 확정 금지). 후보 3: comparability_gap(FASB 비교가능성) / tagging_standardization_score(XBRL 데이터품질) / analyst_friction_index(셀사이드 화법). THESIS 6-3"
+    action: "지표 이름 후보 제시 — **철회**(daria 2026-07-29): C안 자체가 철회돼 opacity_rank 원설계 복원. 이름 변경 불필요"
     owner: "daria"
+    status: done
+  - epic: 4
+    action: "C안(공시 표준화 품질 지표) 실행 — **보류**(daria 철회 2026-07-29). 탐지력 검증 후 결론이 확정되면 재검토할 대안으로만 남김"
+    owner: "Winston"
     status: open
   - epic: 4
-    action: "C안 실행: 6형태 분류기 + filer별 비표준 보고 지표 구현. 선행조건 = 지표 이름 확정. 스캐폴딩(회고 A5 이식 부품 + 계약)과 함께"
-    owner: "Winston + Amelia"
+    action: "**스파이크5 양성 대조군 — 탐지력 검증**(설계: spike-5-positive-control-design.md). SEC comment letter(UPLOAD)·재작성 8-K Item 4.02로 알려진 결함 사례를 파이프라인에 통과시켜 민감도 산출. kill criteria X1(자격통과 >=5건) X2(민감도 >=50%). X2 미달 시 FINDINGS의 진짜누락 0곳을 결론에서 강등. **최우선**"
+    owner: "Amelia + Mary"
+    status: ready-for-dev
+  - epic: 4
+    action: "FINDINGS 한계 절 3분류 재작성 + 개념별 신뢰구간 분리 — done(2026-07-29): 무형자산 전수(거의 확정)/리스 n=12 상한 25%/SBC 의도적추출 구간불가. 46곳 합산은 추출설계 상이로 통계 무효임을 명시. 7-4에 인과·고의를 설계 경계로 재배치"
+    owner: "Mary + Paige"
+    status: done
+  - epic: 4
+    action: "리스 개별 검증 12 -> 30 확대(상한 25% -> 10%, 가성비 지점). 스파이크3-V 사전등록 시드 재사용 금지 — 확대분은 별도 표본으로 기록"
+    owner: "Amelia"
+    status: open
+  - epic: 4
+    action: "다년도 기계 확장(2009~) — 잔차율 시계열 안정성. 개별 검증 불필요라 저비용"
+    owner: "Mary"
     status: open
   - epic: 4
     action: "이자보상배율·순차입금/EBITDA 미측정(레아 covenant 관점 본편) — 리스 개념 처분 확정 후 재검토"
