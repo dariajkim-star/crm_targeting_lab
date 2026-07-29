@@ -308,7 +308,7 @@ action_items:
     owner: "daria + Mary"
     status: done
   - epic: 4
-    action: "스파이크 1일차 실행: docs/screener/spike-1-sec-disclosure-gap.md (T1~T6, K1~K4 착수 전 확정) — T1~T5 + T5확장(4분기) done. K3 조건부 통과하나 표적 좁음: 시총 $10M 이상 41곳 기준 중앙값 0.38%, 10%초과 3곳(7.3%), 그마저 추정 폭 내 흔들림. 시계열 안정성 확보(잔차율 2.2~3.7%). 극단값=초소형주 분모 효과. 표본 성격 변화: 잔차 43%가 OTC. 남은 것 = T6 판정문서 + OTC 트랙 62건 + 초소형주 별도 구간"
+    action: "스파이크 1일차 실행: docs/screener/spike-1-sec-disclosure-gap.md (T1~T6, K1~K4 착수 전 확정) — T1~T5 + T5확장(4분기) + OTC 트랙 done. K3 조건부 통과, 표적 좁음: 주분석 시총$10M이상 41곳 중앙값 0.38%, 10%초과 3곳(7.3%). OTC 21곳은 중앙값 0.03%/10%초과 0곳 — 예상 반전, 물리분리가 값을 함. Stooq 폐기(봇차단, 우회 안함) -> Twelve Data가 OTC 실제 제공. 남은 것 = T6 판정문서"
     owner: "daria + Amelia"
     status: in-progress
   - epic: 4

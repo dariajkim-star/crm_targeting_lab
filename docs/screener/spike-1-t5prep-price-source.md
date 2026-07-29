@@ -95,7 +95,9 @@ Stock 등) 필수, 그리고 **선별 실패 건은 버리지 말고 `multiple_s
                                         └─ 티커 없음(50)  → OTC 트랙
 ③ OTC 티커 보강  SEC submissions API (실측 5/6 회수)          [OTC 트랙]
 ④ 가격 1차       Twelve Data /time_series                     [주분석 트랙]
-⑤ 가격 2차       Stooq 벌크 (OTC 트랙 주력 + ④ 결측 보완)
+⑤ 가격 2차       ~~Stooq 벌크~~ → **폐기(2026-07-29)**: 자동 접근 차단(브라우저 검증
+                 퍼즐 + 벌크 401). 우회하지 않는다. **실측 정정 — Twelve Data가 OTC를 실제로
+                 제공한다**(문서상 미제공이나 33곳 중 29곳 성공). ④가 OTC까지 담당.
 ⑥ 결측 명시      price_source_missing (억지 대체 금지)
 ⑦ 산출 분리      주분석 표 / OTC 표 별도. 합산·평균 금지(daria 결정 ③)
 ```
