@@ -336,8 +336,16 @@ action_items:
     owner: "Amelia"
     status: done
   - epic: 4
-    action: "**daria 판정 — 프로젝트 방향**: (A) '진짜 누락은 극히 드물다'를 결론으로 출판(6형태 분류 + 46곳 전수검증이 산출물) (B) 개념 추가 시도(3연속 0이라 근거 약함) (C) 표적 전환 — 누락탐지에서 비표준보고 탐지로(b가 35%로 최다, 정본 문제정의가 이미 '비표준 보고'를 담음). 권고 = A+C 결합, 산출물을 배제리스트가 아니라 공시 표준화 품질 지표로 재정의"
+    action: "프로젝트 방향 — 종결(daria 결정 2026-07-29): **A+C 채택**. A=결론 출판(FINDINGS.md 작성 완료 — 6형태 분류 + 46곳 검증), C=표적 전환(누락탐지 -> 비표준보고 탐지, 산출물을 배제리스트에서 공시 표준화 품질 지표로). B(개념 추가) 기각(3연속 0). THESIS 6절 출력설계 전면 개정, 폐기 설계는 6-1에 역사 보존"
     owner: "daria"
+    status: done
+  - epic: 4
+    action: "**daria 판정 대기 — 지표 이름**(네이밍 규칙: 현업 jargon 확인 후 daria 선택, 임의 확정 금지). 후보 3: comparability_gap(FASB 비교가능성) / tagging_standardization_score(XBRL 데이터품질) / analyst_friction_index(셀사이드 화법). THESIS 6-3"
+    owner: "daria"
+    status: open
+  - epic: 4
+    action: "C안 실행: 6형태 분류기 + filer별 비표준 보고 지표 구현. 선행조건 = 지표 이름 확정. 스캐폴딩(회고 A5 이식 부품 + 계약)과 함께"
+    owner: "Winston + Amelia"
     status: open
   - epic: 4
     action: "이자보상배율·순차입금/EBITDA 미측정(레아 covenant 관점 본편) — 리스 개념 처분 확정 후 재검토"
