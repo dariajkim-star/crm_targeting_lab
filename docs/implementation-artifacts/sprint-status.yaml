@@ -328,7 +328,15 @@ action_items:
     owner: "Amelia + Mary"
     status: done
   - epic: 4
-    action: "스파이크3 인계: ①번 52곳의 부외 판정을 개별 10-K로 검증(일부는 단기리스 면제라 정상화 부적절 가능 — 스파이크2에서 이 검증이 개념 하나를 죽인 전례). 이자보상배율·순차입금/EBITDA 미측정(레아 covenant 관점 본편)"
+    action: "스파이크3-V 부외 개별 검증 — 종결(2026-07-29, spike-3v-verdict.md): **V1 미달(d=0/12) -> 스파이크3 비율 결론 철회**. 무작위 12곳: 단기리스 면제 4 / 태그만 누락 2 / ASC842 리스 아님 5 / 보류 1. 최대건 Warrior Met Coal은 10-K에 12개월 이하 미기록 명시. 신규 함정: 업종 용어 충돌(SIC 13xx 광권·BOEM right-of-use) = 부재!=누락 6번째 형태"
+    owner: "Amelia"
+    status: done
+  - epic: 4
+    action: "daria 판정 3건(스파이크3-V 인계): (1) 리스 개념 처분 — 전방 기준대로 즉시 제외 vs SIC 13xx 배제 후 2차 표본 (2) 무형자산 16곳 개별 검증(유일한 미검증 개념) (3) 세 개념 전멸 시 방향 — 개념 추가 vs '진짜 누락은 극히 드물다'를 결론으로 출판"
+    owner: "daria"
+    status: open
+  - epic: 4
+    action: "이자보상배율·순차입금/EBITDA 미측정(레아 covenant 관점 본편) — 리스 개념 처분 확정 후 재검토"
     owner: "Amelia"
     status: open
   - epic: 4
