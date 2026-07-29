@@ -308,7 +308,7 @@ action_items:
     owner: "daria + Mary"
     status: done
   - epic: 4
-    action: "스파이크 1일차 실행: docs/screener/spike-1-sec-disclosure-gap.md (T1~T6, kill criteria K1~K4 착수 전 확정). 최대 난관 = AC3 부재!=누락 대체설명 반증 — T1 done(취득경로·주석레벨 도달), T2 done(peer=SIC4 단독, filer status는 보정 공변량). 다음 = T3"
+    action: "스파이크 1일차 실행: docs/screener/spike-1-sec-disclosure-gap.md (T1~T6, kill criteria K1~K4 착수 전 확정) — T1 done, T2 done, T3 done(부재 분해: 잔차 78곳/1.9%, T2 반증 통과 27.4pp→5.0pp, K1 사망 조건 미발생). 다음 = T4(보정 실효) 또는 타개념 확장"
     owner: "daria + Amelia"
     status: in-progress
   - epic: 4
