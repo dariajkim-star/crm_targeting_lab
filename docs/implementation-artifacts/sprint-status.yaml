@@ -332,7 +332,11 @@ action_items:
     owner: "Amelia"
     status: done
   - epic: 4
-    action: "daria 판정 3건(스파이크3-V 인계): (1) 리스 개념 처분 — 전방 기준대로 즉시 제외 vs SIC 13xx 배제 후 2차 표본 (2) 무형자산 16곳 개별 검증(유일한 미검증 개념) (3) 세 개념 전멸 시 방향 — 개념 추가 vs '진짜 누락은 극히 드물다'를 결론으로 출판"
+    action: "스파이크4 무형자산 전수 검증 — 종결(2026-07-29, spike-4-verdict.md): **W1 미달(d=0/23) -> 무형자산 개념 제외. 세 개념 전멸.** b 다른곳기재 8(35%, Sturm Ruger는 주석6 Other Assets에 총액·상각누계 전부) / a 실질부재·전액상각 7(30%, SPOK·eHealth 명시) / c 업종동음이의 7(30%, REIT in-place lease·보험 DAC·유틸리티 intangible plant) / 보류 1. 사전예측 P1~P4 4/4 적중, 자기점검 규칙 3연속 적중"
+    owner: "Amelia"
+    status: done
+  - epic: 4
+    action: "**daria 판정 — 프로젝트 방향**: (A) '진짜 누락은 극히 드물다'를 결론으로 출판(6형태 분류 + 46곳 전수검증이 산출물) (B) 개념 추가 시도(3연속 0이라 근거 약함) (C) 표적 전환 — 누락탐지에서 비표준보고 탐지로(b가 35%로 최다, 정본 문제정의가 이미 '비표준 보고'를 담음). 권고 = A+C 결합, 산출물을 배제리스트가 아니라 공시 표준화 품질 지표로 재정의"
     owner: "daria"
     status: open
   - epic: 4
