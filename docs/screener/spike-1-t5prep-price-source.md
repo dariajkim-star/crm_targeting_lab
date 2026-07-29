@@ -91,10 +91,13 @@ Stock 등) 필수, 그리고 **선별 실패 건은 버리지 말고 `multiple_s
 ① 표본 정리      CIK + adsh + concept + period_end, CIK 기준 중복 제거
 ② 시점 티커      dei:TradingSymbol (notes txt.tsv, dimh로 Security12bTitle 짝짓기)
                  └ 보통주만 선별, 실패 시 multiple_security_classes로 격리
-③ OTC 보강       티커 없는 건 → SEC submissions API (실측 5/6 회수)
-④ 가격 1차       Twelve Data /time_series (거래소 상장분)
-⑤ 가격 2차       Stooq 벌크 (OTC 및 ④ 결측) ← 표본 29.4%가 여기 의존
+                 └ 여기서 트랙이 갈린다 ─┬─ 티커 있음(120) → 주분석 트랙
+                                        └─ 티커 없음(50)  → OTC 트랙
+③ OTC 티커 보강  SEC submissions API (실측 5/6 회수)          [OTC 트랙]
+④ 가격 1차       Twelve Data /time_series                     [주분석 트랙]
+⑤ 가격 2차       Stooq 벌크 (OTC 트랙 주력 + ④ 결측 보완)
 ⑥ 결측 명시      price_source_missing (억지 대체 금지)
+⑦ 산출 분리      주분석 표 / OTC 표 별도. 합산·평균 금지(daria 결정 ③)
 ```
 
 **가격 시점 고정(택1, 혼용 금지)**: `DocumentPeriodEndDate` **직전 거래일 raw close × 당시 주식수**.
@@ -110,8 +113,13 @@ Stock 등) 필수, 그리고 **선별 실패 건은 버리지 말고 `multiple_s
 ## 6. 착수 전 남은 결정 (daria)
 
 1. **Twelve Data 무료 키 발급** — 필요. 없으면 ④가 통째로 빈다.
-2. **OTC 처리 방침** — 표본의 29.4%다. ①Stooq로 최대한 회수 ②OTC는 표본에서 제외하고 그 사실을
-   K3 한계로 명시 ③둘 다(주분석은 상장분, OTC는 별도 표) — **③ 권고**(crm 3-4 annex 물리 분리 선례).
+2. ~~**OTC 처리 방침**~~ → **✅ 종결(daria 결정 2026-07-29): ③ 물리 분리 채택.**
+   **주분석 = 거래소 상장분(120건)** · **OTC(50건)는 별도 표로 분리 산출**. 두 결과를 한 축에
+   섞지 않는다. 근거: crm 3-4 D2 `risk_quantile annex` 선례 — 민감도를 official 등고선과 물리
+   분리하고 official 오염 0을 테스트로 단언했던 방식 그대로. 이렇게 해야 K3 실패 시
+   *"밸류에이션과 무관해서"*인지 *"OTC가 빠져 표본이 왜곡돼서"*인지 **갈라 말할 수 있다.**
+   - **계약**: OTC 표는 주분석 수치에 산입 0. 별도 산출물이며, 합산·평균 금지.
+   - Stooq 회수는 OTC 표 안에서 수행하고, 회수 실패분은 `price_source_missing`으로 명시.
 3. **표본 크기 우려** — 상장분만 보면 120건, OTC 회수 실패 시 더 줄어든다. 단일 분기(2025Q1) 기준이라
    **분기를 늘려 표본을 키우는 선택**이 필요할 수 있다(캐시된 4개 분기 활용 가능).
 

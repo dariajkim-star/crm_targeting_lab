@@ -316,6 +316,14 @@ action_items:
     owner: "daria"
     status: open
   - epic: 4
+    action: "T5 착수 조건: Twelve Data 무료 키 발급(twelvedata.com/register, Basic Free 800/day) — 주분석 트랙 가격 소스"
+    owner: "daria"
+    status: open
+  - epic: 4
+    action: "T5 OTC 처리 방침 — 종결(daria 2026-07-29): 물리 분리 채택. 주분석=상장분 120건, OTC 50건은 별도 표. 합산/평균 금지, crm 3-4 annex 선례. K3 실패 원인(밸류 무관 vs 표본 왜곡)을 분리 진술 가능하게 함"
+    owner: "daria"
+    status: done
+  - epic: 4
     action: "crm 이식 부품 목록(회고 6절)을 스크리너 스캐폴딩 시 conventions/스파인에 반영 — goldens 단일 출처/바이트 불변 DoD/문서-계약 3법칙 포함"
     owner: "Winston + Amelia"
     status: open
