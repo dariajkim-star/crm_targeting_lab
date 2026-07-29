@@ -320,8 +320,16 @@ action_items:
     owner: "Amelia + Mary"
     status: done
   - epic: 4
-    action: "daria 판정: 개념 후보 재선정(잔액 개념 — 재고평가충당금/충당부채/이연법인세 평가충당금 등) 후 재시도할 것인가, 아니면 개념 2개(리스·무형)로 스캐폴딩 진행할 것인가"
+    action: "daria 판정: 개념 후보 재선정 vs 스캐폴딩 — 종결(파티 2026-07-29): 둘 다 아님. 문제정의 재정의로 **재무비율 영향 측정**이 선행으로 승격(최종 질문 3개 중 미측정 1개). 새 개념 추가는 그 후로 연기"
     owner: "daria"
+    status: done
+  - epic: 4
+    action: "재무비율 영향 측정 — 되살린 금액을 정상화했을 때 부채비율/총부채대자산 등이 얼마나 움직이는가. 기존 표본·데이터 재사용(가격 API 불필요). K3(기업가치 축)를 뒤집을 수 있는 측정"
+    owner: "Amelia + Mary"
+    status: in-progress
+  - epic: 4
+    action: "산출물 구조 전환(파티 2026-07-29): 3분류 테이블(진짜누락/다른곳기재/애초0)이 1차 산출물, opacity_rank는 1분류에서 파생되는 2차. 스캐폴딩 시 반영"
+    owner: "Winston"
     status: open
   - epic: 4
     action: "T2 미확정 1건: peer 셀 최소 크기 임계값 — 종결(파티 2026-07-29): n>=10 확정, config 고정+정책가정 라벨+감도 annex(n=5 탈락1/n=20 탈락14 병기)"
