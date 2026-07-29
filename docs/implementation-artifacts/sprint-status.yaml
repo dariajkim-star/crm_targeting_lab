@@ -316,9 +316,13 @@ action_items:
     owner: "daria"
     status: done
   - epic: 4
-    action: "3번째 개념 SBC(주식보상) 부재 분해 — 착수 전 kill criteria 적용(전방 기준). 파이프라인 재사용, 예상 반나절"
+    action: "3번째 개념 SBC 부재 분해 — 종결(2026-07-29): **S2 미달로 SBC 스크리너 제외**. 사전등록(d0a37bd) 후 측정. 확증 잔차 349(5.61%)이나 개별 검증 11곳 열람 결과 확인된 진짜 누락 0곳(Thunder Mountain: No compensation expense ... recognized 명시). 원인 = SBC는 흐름 개념이라 제도 존재해도 당기 비용 0이 정당 -> 잔액 개념용 증거 규칙이 구조적 무효. 신규 계약: 개념 선정은 잔액 개념 우선, 흐름 개념은 정당한 0 판별 장치 없이 채택 금지"
     owner: "Amelia + Mary"
-    status: ready-for-dev
+    status: done
+  - epic: 4
+    action: "daria 판정: 개념 후보 재선정(잔액 개념 — 재고평가충당금/충당부채/이연법인세 평가충당금 등) 후 재시도할 것인가, 아니면 개념 2개(리스·무형)로 스캐폴딩 진행할 것인가"
+    owner: "daria"
+    status: open
   - epic: 4
     action: "T2 미확정 1건: peer 셀 최소 크기 임계값 — 종결(파티 2026-07-29): n>=10 확정, config 고정+정책가정 라벨+감도 annex(n=5 탈락1/n=20 탈락14 병기)"
     owner: "daria"
