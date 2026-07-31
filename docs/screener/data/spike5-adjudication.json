@@ -1,0 +1,194 @@
+{
+  "adjudicated": 65,
+  "pass": 19,
+  "fail": 46,
+  "fail_reasons": {
+    "C3_quarterly_or_prewindow": 26,
+    "C2_wrong_concept": 12,
+    "C1_classification_only": 7,
+    "C4_homonym": 1
+  },
+  "false_negative_rate_prescreen": "3/86 (3.5%), all lease-synonym gaps",
+  "type_split": {
+    "omission_or_completeness": [
+      "Veroni Brands",
+      "Tupperware Brands",
+      "SS Innovations Intl",
+      "Driven Brands"
+    ],
+    "misstatement": 15
+  },
+  "passes": [
+    {
+      "company": "FuboTV Inc. (FaceBank)",
+      "cik": "1484769",
+      "accession": "0001493152-20-015140",
+      "filing_date": "2020-08-11",
+      "concept": "goodwill $79.7M impairment recorded in error",
+      "restated_annuals": "FY2019",
+      "type": "misstatement"
+    },
+    {
+      "company": "Odyssey Health, Inc.",
+      "cik": "1626644",
+      "accession": "0001683168-20-003444",
+      "filing_date": "2020-10-15",
+      "concept": "R&D wrongly capitalized as intangibles",
+      "restated_annuals": "FYE2019-07",
+      "type": "misstatement"
+    },
+    {
+      "company": "Interpace Biosciences",
+      "cik": "1054102",
+      "accession": "0001493152-20-023091",
+      "filing_date": "2020-12-08",
+      "concept": "intangible missed impairment/amortization $12M",
+      "restated_annuals": "FY2014-2019",
+      "type": "misstatement"
+    },
+    {
+      "company": "Plug Power",
+      "cik": "1093691",
+      "accession": "0001104659-21-037184",
+      "filing_date": "2021-03-16",
+      "concept": "ROU asset & finance obligation overstated (sale-leaseback)",
+      "restated_annuals": "FY2018-2019",
+      "type": "misstatement"
+    },
+    {
+      "company": "Polished.com",
+      "cik": "1810140",
+      "accession": "0001213900-21-018274",
+      "filing_date": "2021-03-29",
+      "concept": "goodwill misstated $372K (marginal)",
+      "restated_annuals": "FY2019",
+      "type": "misstatement"
+    },
+    {
+      "company": "Veroni Brands",
+      "cik": "1693690",
+      "accession": "0001493152-21-020659",
+      "filing_date": "2021-08-19",
+      "concept": "ROU asset & lease liability NOT RECORDED",
+      "restated_annuals": "FY2019",
+      "type": "omission"
+    },
+    {
+      "company": "Tupperware Brands",
+      "cik": "1008654",
+      "accession": "0001008654-23-000023",
+      "filing_date": "2023-03-16",
+      "concept": "lease completeness & accuracy (ROU/liability)",
+      "restated_annuals": "FY2020-2021",
+      "type": "completeness"
+    },
+    {
+      "company": "ADT Inc.",
+      "cik": "1703056",
+      "accession": "0001703056-23-000140",
+      "filing_date": "2023-07-10",
+      "concept": "goodwill impairment understated",
+      "restated_annuals": "FY2022",
+      "type": "misstatement"
+    },
+    {
+      "company": "Greenlane Holdings",
+      "cik": "1743745",
+      "accession": "0001743745-23-000072",
+      "filing_date": "2023-11-15",
+      "concept": "intangibles overstated, $50.7M impairment missed",
+      "restated_annuals": "FY2022",
+      "type": "misstatement"
+    },
+    {
+      "company": "Sonder Holdings",
+      "cik": "1819395",
+      "accession": "0001819395-24-000015",
+      "filing_date": "2024-03-15",
+      "concept": "ROU asset valuation/impairment errors",
+      "restated_annuals": "FY2022",
+      "type": "misstatement"
+    },
+    {
+      "company": "LOGIQ, INC.",
+      "cik": "1335112",
+      "accession": "0001575872-24-000460",
+      "filing_date": "2024-05-01",
+      "concept": "intangibles not properly valued",
+      "restated_annuals": "FY2022",
+      "type": "misstatement"
+    },
+    {
+      "company": "SS Innovations Intl",
+      "cik": "1676163",
+      "accession": "0001213900-24-068635",
+      "filing_date": "2024-08-14",
+      "concept": "ROU asset/liability recognition (mixed-cause)",
+      "restated_annuals": "FY2022-2023",
+      "type": "omission?"
+    },
+    {
+      "company": "INVO Fertility",
+      "cik": "1417926",
+      "accession": "0001493152-24-037589",
+      "filing_date": "2024-09-20",
+      "concept": "ROU/lease liability wrong discount rate",
+      "restated_annuals": "FY2021-2023",
+      "type": "misstatement"
+    },
+    {
+      "company": "Alpine 4 Holdings",
+      "cik": "1606698",
+      "accession": "0001628280-24-048426",
+      "filing_date": "2024-11-19",
+      "concept": "ROU & lease liabilities overstated",
+      "restated_annuals": "FY2022",
+      "type": "misstatement"
+    },
+    {
+      "company": "American Rebel Holdings",
+      "cik": "1648087",
+      "accession": "0001493152-25-002366",
+      "filing_date": "2025-01-15",
+      "concept": "ROU adjustments + goodwill impairment (mixed)",
+      "restated_annuals": "FY2022-2023",
+      "type": "misstatement"
+    },
+    {
+      "company": "Healthcare Triangle",
+      "cik": "1839285",
+      "accession": "0001213900-25-014489",
+      "filing_date": "2025-02-18",
+      "concept": "intangibles unsupported capitalization $2.19M",
+      "restated_annuals": "FY2023",
+      "type": "misstatement"
+    },
+    {
+      "company": "Adverum Biotechnologies",
+      "cik": "1501756",
+      "accession": "0001193125-25-068759",
+      "filing_date": "2025-03-31",
+      "concept": "lease TIA errors misstate lease assets/liabilities",
+      "restated_annuals": "FY2022-2023",
+      "type": "misstatement"
+    },
+    {
+      "company": "Driven Brands",
+      "cik": "1804745",
+      "accession": "0001804745-26-000015",
+      "filing_date": "2026-02-25",
+      "concept": "lease completeness/accuracy (ROU & liabilities)",
+      "restated_annuals": "FY2023-2024",
+      "type": "completeness"
+    },
+    {
+      "company": "FDCTech, Inc.",
+      "cik": "1722731",
+      "accession": "0001493152-26-027774",
+      "filing_date": "2026-06-08",
+      "concept": "ROU remeasurement under ASC 842",
+      "restated_annuals": "FY2024-2025",
+      "type": "misstatement"
+    }
+  ]
+}

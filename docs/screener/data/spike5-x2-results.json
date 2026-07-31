@@ -1,0 +1,628 @@
+{
+  "ruling": "daria (b) 2026-07-31: dual-track",
+  "absence_track": {
+    "n": 4,
+    "detected": [
+      "Veroni Brands",
+      "SS Innovations Intl"
+    ],
+    "not_detected": [
+      "Tupperware Brands",
+      "Driven Brands"
+    ],
+    "unmeasurable": []
+  },
+  "misstatement_track_NOT_in_X2": {
+    "n": 15,
+    "misstatement_recall_hits": [],
+    "tag_present_as_expected": [
+      "FuboTV Inc. (FaceBank)",
+      "Odyssey Health, Inc.",
+      "Interpace Biosciences",
+      "Plug Power",
+      "ADT Inc.",
+      "Greenlane Holdings",
+      "Sonder Holdings",
+      "LOGIQ, INC.",
+      "INVO Fertility",
+      "Alpine 4 Holdings",
+      "American Rebel Holdings",
+      "Healthcare Triangle",
+      "Adverum Biotechnologies",
+      "FDCTech, Inc."
+    ],
+    "unmeasurable": [
+      "Polished.com"
+    ]
+  },
+  "detail": [
+    {
+      "company": "FuboTV Inc. (FaceBank)",
+      "cik": "1484769",
+      "type": "misstatement",
+      "family": "goodwill",
+      "eight_k": "2020-08-11",
+      "years": {
+        "2019": {
+          "status": "measured",
+          "accession": "0001493152-20-010180",
+          "filed": "2020-05-29",
+          "report": "2019-12-31",
+          "main_tags_present": [
+            "Goodwill"
+          ],
+          "aux_tags_present": [
+            "FiniteLivedIntangibleAssetsNet",
+            "IntangibleAssetsNetExcludingGoodwill"
+          ],
+          "detected_as_residual": false
+        }
+      }
+    },
+    {
+      "company": "Odyssey Health, Inc.",
+      "cik": "1626644",
+      "type": "misstatement",
+      "family": "intangible",
+      "eight_k": "2020-10-15",
+      "years": {
+        "2019": {
+          "status": "measured",
+          "accession": "0001683168-19-003350",
+          "filed": "2019-10-23",
+          "report": "2019-07-31",
+          "main_tags_present": [
+            "FiniteLivedIntangibleAssetsNet",
+            "IntangibleAssetsNetExcludingGoodwill"
+          ],
+          "aux_tags_present": [
+            "Goodwill"
+          ],
+          "detected_as_residual": false
+        }
+      }
+    },
+    {
+      "company": "Interpace Biosciences",
+      "cik": "1054102",
+      "type": "misstatement",
+      "family": "intangible",
+      "eight_k": "2020-12-08",
+      "years": {
+        "2014": {
+          "status": "measured",
+          "accession": "0001054102-15-000012",
+          "filed": "2015-03-05",
+          "report": "2014-12-31",
+          "main_tags_present": [
+            "FiniteLivedIntangibleAssetsNet"
+          ],
+          "aux_tags_present": [
+            "Goodwill"
+          ],
+          "detected_as_residual": false
+        },
+        "2015": {
+          "status": "measured",
+          "accession": "0001054102-16-000097",
+          "filed": "2016-03-30",
+          "report": "2015-12-31",
+          "main_tags_present": [
+            "FiniteLivedIntangibleAssetsNet"
+          ],
+          "aux_tags_present": [
+            "Goodwill"
+          ],
+          "detected_as_residual": false
+        },
+        "2016": {
+          "status": "measured",
+          "accession": "0001437749-17-005779",
+          "filed": "2017-03-31",
+          "report": "2016-12-31",
+          "main_tags_present": [
+            "FiniteLivedIntangibleAssetsNet"
+          ],
+          "aux_tags_present": [
+            "Goodwill"
+          ],
+          "detected_as_residual": false
+        },
+        "2017": {
+          "status": "measured",
+          "accession": "0001493152-18-003786",
+          "filed": "2018-03-23",
+          "report": "2017-12-31",
+          "main_tags_present": [
+            "FiniteLivedIntangibleAssetsNet"
+          ],
+          "aux_tags_present": [
+            "Goodwill"
+          ],
+          "detected_as_residual": false
+        },
+        "2018": {
+          "status": "measured",
+          "accession": "0001493152-19-003733",
+          "filed": "2019-03-21",
+          "report": "2018-12-31",
+          "main_tags_present": [
+            "FiniteLivedIntangibleAssetsNet"
+          ],
+          "aux_tags_present": [
+            "Goodwill"
+          ],
+          "detected_as_residual": false
+        },
+        "2019": {
+          "status": "measured",
+          "accession": "0001493152-20-006897",
+          "filed": "2020-04-22",
+          "report": "2019-12-31",
+          "main_tags_present": [
+            "FiniteLivedIntangibleAssetsNet"
+          ],
+          "aux_tags_present": [
+            "Goodwill"
+          ],
+          "detected_as_residual": false
+        }
+      }
+    },
+    {
+      "company": "Plug Power",
+      "cik": "1093691",
+      "type": "misstatement",
+      "family": "lease",
+      "eight_k": "2021-03-16",
+      "years": {
+        "2018": {
+          "status": "measured",
+          "accession": "0001558370-19-001929",
+          "filed": "2019-03-13",
+          "report": "2018-12-31",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        },
+        "2019": {
+          "status": "measured",
+          "accession": "0001558370-20-002267",
+          "filed": "2020-03-10",
+          "report": "2019-12-31",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        }
+      }
+    },
+    {
+      "company": "Polished.com",
+      "cik": "1810140",
+      "type": "misstatement",
+      "family": "goodwill",
+      "eight_k": "2021-03-29",
+      "years": {
+        "2019": {
+          "status": "no_original_10k_found"
+        }
+      }
+    },
+    {
+      "company": "Veroni Brands",
+      "cik": "1693690",
+      "type": "omission",
+      "family": "lease",
+      "eight_k": "2021-08-19",
+      "years": {
+        "2019": {
+          "status": "measured",
+          "accession": "0001493152-20-006346",
+          "filed": "2020-04-14",
+          "report": "2019-12-31",
+          "main_tags_present": [],
+          "aux_tags_present": [],
+          "detected_as_residual": true
+        }
+      }
+    },
+    {
+      "company": "Tupperware Brands",
+      "cik": "1008654",
+      "type": "completeness",
+      "family": "lease",
+      "eight_k": "2023-03-16",
+      "years": {
+        "2020": {
+          "status": "measured",
+          "accession": "0001008654-21-000022",
+          "filed": "2021-03-10",
+          "report": "2020-12-26",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        },
+        "2021": {
+          "status": "measured",
+          "accession": "0001008654-22-000008",
+          "filed": "2022-02-23",
+          "report": "2021-12-25",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        }
+      }
+    },
+    {
+      "company": "ADT Inc.",
+      "cik": "1703056",
+      "type": "misstatement",
+      "family": "goodwill",
+      "eight_k": "2023-07-10",
+      "years": {
+        "2022": {
+          "status": "measured",
+          "accession": "0001703056-23-000046",
+          "filed": "2023-02-28",
+          "report": "2022-12-31",
+          "main_tags_present": [
+            "Goodwill"
+          ],
+          "aux_tags_present": [
+            "FiniteLivedIntangibleAssetsNet",
+            "IntangibleAssetsNetExcludingGoodwill"
+          ],
+          "detected_as_residual": false
+        }
+      }
+    },
+    {
+      "company": "Greenlane Holdings",
+      "cik": "1743745",
+      "type": "misstatement",
+      "family": "intangible",
+      "eight_k": "2023-11-15",
+      "years": {
+        "2022": {
+          "status": "measured",
+          "accession": "0001743745-23-000014",
+          "filed": "2023-03-31",
+          "report": "2022-12-31",
+          "main_tags_present": [
+            "FiniteLivedIntangibleAssetsNet",
+            "IntangibleAssetsNetExcludingGoodwill"
+          ],
+          "aux_tags_present": [
+            "Goodwill"
+          ],
+          "detected_as_residual": false
+        }
+      }
+    },
+    {
+      "company": "Sonder Holdings",
+      "cik": "1819395",
+      "type": "misstatement",
+      "family": "lease",
+      "eight_k": "2024-03-15",
+      "years": {
+        "2022": {
+          "status": "measured",
+          "accession": "0001819395-23-000029",
+          "filed": "2023-03-16",
+          "report": "2022-12-31",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        }
+      }
+    },
+    {
+      "company": "LOGIQ, INC.",
+      "cik": "1335112",
+      "type": "misstatement",
+      "family": "intangible",
+      "eight_k": "2024-05-01",
+      "years": {
+        "2022": {
+          "status": "measured",
+          "accession": "0001575872-23-000678",
+          "filed": "2023-05-08",
+          "report": "2022-12-31",
+          "main_tags_present": [
+            "FiniteLivedIntangibleAssetsNet",
+            "IntangibleAssetsNetExcludingGoodwill"
+          ],
+          "aux_tags_present": [
+            "Goodwill"
+          ],
+          "detected_as_residual": false
+        }
+      }
+    },
+    {
+      "company": "SS Innovations Intl",
+      "cik": "1676163",
+      "type": "omission?",
+      "family": "lease",
+      "eight_k": "2024-08-14",
+      "years": {
+        "2022": {
+          "status": "measured",
+          "accession": "0001213900-23-025143",
+          "filed": "2023-03-31",
+          "report": "2022-12-31",
+          "main_tags_present": [],
+          "aux_tags_present": [],
+          "detected_as_residual": true
+        },
+        "2023": {
+          "status": "measured",
+          "accession": "0001213900-24-025140",
+          "filed": "2024-03-22",
+          "report": "2023-12-31",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        }
+      }
+    },
+    {
+      "company": "INVO Fertility",
+      "cik": "1417926",
+      "type": "misstatement",
+      "family": "lease",
+      "eight_k": "2024-09-20",
+      "years": {
+        "2021": {
+          "status": "measured",
+          "accession": "0001493152-22-008421",
+          "filed": "2022-03-31",
+          "report": "2021-12-31",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        },
+        "2022": {
+          "status": "measured",
+          "accession": "0001493152-23-012532",
+          "filed": "2023-04-17",
+          "report": "2022-12-31",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        },
+        "2023": {
+          "status": "measured",
+          "accession": "0001493152-24-014838",
+          "filed": "2024-04-16",
+          "report": "2023-12-31",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        }
+      }
+    },
+    {
+      "company": "Alpine 4 Holdings",
+      "cik": "1606698",
+      "type": "misstatement",
+      "family": "lease",
+      "eight_k": "2024-11-19",
+      "years": {
+        "2022": {
+          "status": "measured",
+          "accession": "0001628280-23-016240",
+          "filed": "2023-05-08",
+          "report": "2022-12-31",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        }
+      }
+    },
+    {
+      "company": "American Rebel Holdings",
+      "cik": "1648087",
+      "type": "misstatement",
+      "family": "lease",
+      "eight_k": "2025-01-15",
+      "years": {
+        "2022": {
+          "status": "measured",
+          "accession": "0001493152-23-012360",
+          "filed": "2023-04-14",
+          "report": "2022-12-31",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        },
+        "2023": {
+          "status": "measured",
+          "accession": "0001493152-24-014473",
+          "filed": "2024-04-12",
+          "report": "2023-12-31",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        }
+      }
+    },
+    {
+      "company": "Healthcare Triangle",
+      "cik": "1839285",
+      "type": "misstatement",
+      "family": "intangible",
+      "eight_k": "2025-02-18",
+      "years": {
+        "2023": {
+          "status": "measured",
+          "accession": "0001213900-24-023562",
+          "filed": "2024-03-18",
+          "report": "2023-12-31",
+          "main_tags_present": [
+            "FiniteLivedIntangibleAssetsNet",
+            "IntangibleAssetsNetExcludingGoodwill"
+          ],
+          "aux_tags_present": [
+            "Goodwill"
+          ],
+          "detected_as_residual": false
+        }
+      }
+    },
+    {
+      "company": "Adverum Biotechnologies",
+      "cik": "1501756",
+      "type": "misstatement",
+      "family": "lease",
+      "eight_k": "2025-03-31",
+      "years": {
+        "2022": {
+          "status": "measured",
+          "accession": "0001628280-23-009899",
+          "filed": "2023-03-30",
+          "report": "2022-12-31",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        },
+        "2023": {
+          "status": "measured",
+          "accession": "0001628280-24-011648",
+          "filed": "2024-03-18",
+          "report": "2023-12-31",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        }
+      }
+    },
+    {
+      "company": "Driven Brands",
+      "cik": "1804745",
+      "type": "completeness",
+      "family": "lease",
+      "eight_k": "2026-02-25",
+      "years": {
+        "2023": {
+          "status": "measured",
+          "accession": "0001804745-24-000005",
+          "filed": "2024-02-28",
+          "report": "2023-12-30",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        },
+        "2024": {
+          "status": "measured",
+          "accession": "0001804745-25-000010",
+          "filed": "2025-02-26",
+          "report": "2024-12-28",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        }
+      }
+    },
+    {
+      "company": "FDCTech, Inc.",
+      "cik": "1722731",
+      "type": "misstatement",
+      "family": "lease",
+      "eight_k": "2026-06-08",
+      "years": {
+        "2024": {
+          "status": "measured",
+          "accession": "0001641172-25-001853",
+          "filed": "2025-03-31",
+          "report": "2024-12-31",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        },
+        "2025": {
+          "status": "measured",
+          "accession": "0001493152-26-017945",
+          "filed": "2026-04-17",
+          "report": "2025-12-31",
+          "main_tags_present": [
+            "OperatingLeaseLiability"
+          ],
+          "aux_tags_present": [
+            "OperatingLeaseRightOfUseAsset"
+          ],
+          "detected_as_residual": false
+        }
+      }
+    }
+  ]
+}
