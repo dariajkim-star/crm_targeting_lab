@@ -2,6 +2,10 @@
 
 의도적으로 미룬 항목을 근거와 함께 기록한다(conventions 5항).
 
+> **📌 본공연(스크리너) 이식 판정 완료 (2026-07-31 파티, daria)** — 이 목록의 미해소 항목 전수에
+> 대한 이식 여부·우선순위 판정은 `docs/THESIS.md` 7절 결정 대장이 정본이다. 이 문서는 crm 동결과
+> 함께 동결 상태이며, 여기에 새 항목을 추가하지 않는다.
+
 ## Deferred from: code review of 1-1a-scaffolding-config-structure-guards (2026-07-20)
 
 - ~~**파이프라인 `main(input_paths, output_paths)` 시그니처 존재 검증**~~ — **해소(1-1b)**: `find_pipeline_shape_violations`에 main 부재·시그니처 불일치 검사 추가, 자기검증 픽스처 2건 동반.
